@@ -79,7 +79,8 @@ def capabilities() -> list[Cap]:
         caps.append(Cap("impersonate", "Cloudflare-fronted sites", True, "curl_cffi TLS impersonation"))
     except ImportError:
         caps.append(Cap("impersonate", "Cloudflare-fronted sites", None, "optional: some sites 403 without TLS impersonation",
-                        "uv tool install --force 'antharmaya-siphon[impersonate]'"))
+                        # from the repo, not PyPI: the PyPI name isn't ours yet, and anyone could register it
+                        "uv tool install --force 'antharmaya-siphon[impersonate] @ git+https://github.com/antharmaya/siphon'"))
 
     rc = shutil.which("rclone")
     caps.append(Cap("rclone", "cloud destinations", True if rc else None,
