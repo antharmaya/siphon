@@ -1,0 +1,66 @@
+.siphon-dl-holder {
+  position: absolute;
+  z-index: 2147483646;
+  pointer-events: none;
+}
+.siphon-dl-btn {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 11px;
+  font: 600 12px/1 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: #fff;
+  background: rgba(20, 22, 28, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  opacity: 0.55;
+  transition: opacity 0.15s ease, background 0.15s ease, transform 0.1s ease;
+}
+.siphon-dl-holder:hover .siphon-dl-btn,
+.siphon-dl-btn:focus-visible,
+.siphon-dl-btn.siphon-working,
+.siphon-dl-btn.siphon-done,
+.siphon-dl-btn.siphon-error { opacity: 1; }
+.siphon-dl-holder { opacity: 1; }
+.siphon-dl-btn:hover { background: rgba(13, 17, 23, 0.94); border-color: rgba(109, 165, 248, 0.6); transform: translateY(-1px); }
+.siphon-dl-btn:active { transform: translateY(0); }
+/* The living mark carries the state; the button stays dark so the mark reads on any video. */
+.siphon-dl-btn.siphon-working { background: rgba(13, 17, 23, 0.94); cursor: progress; }
+.siphon-dl-btn.siphon-done { background: rgba(13, 17, 23, 0.94); color: #9fd8ae; }
+.siphon-dl-btn.siphon-error { background: rgba(13, 17, 23, 0.94); color: #f4a39a; }
+.siphon-state { width: 16px; height: 16px; flex: 0 0 auto; display: block; }
+.siphon-dl-btn.siphon-stack { flex-direction: column; gap: 5px; padding: 9px 12px 8px; min-width: 78px; }
+.siphon-dl-btn.siphon-stack .siphon-state { width: 36px; height: 36px; }
+.siphon-dl-label { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.siphon-menu {
+  position: absolute;
+  z-index: 2147483647;
+  display: flex;
+  flex-direction: column;
+  min-width: 170px;
+  padding: 5px;
+  background: rgba(20, 22, 28, 0.97);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+  font: 500 13px/1 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+.siphon-menu-item {
+  text-align: left;
+  padding: 9px 11px;
+  color: #e6edf3;
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.siphon-menu-item:hover { background: #1f6feb; }
+.siphon-menu-cancel { color: #9aa4b2; margin-top: 2px; border-top: 1px solid rgba(255,255,255,0.08); border-radius: 0 0 6px 6px; }
+.siphon-menu-cancel:hover { background: rgba(255,255,255,0.08); color: #e6edf3; }

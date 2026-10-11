@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1256b2">
+<title>siphon</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/mark.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<link rel="stylesheet" href="/app.css">
+<script src="/app.js" defer></script>
+</head>
+<body>
+<header class="top">
+  <img class="brand" src="/lockup.svg" alt="siphon" height="30">
+  <span class="host" id="host"></span>
+</header>
+<main>
+  <section id="pair" class="card pair" hidden>
+    <h1>Pair this device</h1>
+    <p>On the computer running siphon, run <code>siphon serve pair</code> and type the code it prints.</p>
+    <form id="pair-form">
+      <label for="code">Pairing code</label>
+      <input id="code" inputmode="numeric" autocomplete="one-time-code" placeholder="1234-5678" required>
+      <button type="submit">Pair</button>
+    </form>
+    <p class="msg" id="pair-msg" role="alert"></p>
+  </section>
+
+  <section id="app" hidden>
+    <form id="add" class="card add">
+      <label for="url" class="sr">Link to download</label>
+      <input id="url" type="url" inputmode="url" autocomplete="off" placeholder="Paste a link" required>
+      <fieldset class="dest">
+        <legend>Save to</legend>
+        <label><input type="radio" name="dest" value="device" checked> This device</label>
+        <label><input type="radio" name="dest" value="box"> <span id="box-name">The box</span></label>
+      </fieldset>
+      <div class="opts">
+        <label for="preset">Quality</label>
+        <select id="preset">
+          <option value="best">Best</option>
+          <option value="compat">Plays anywhere</option>
+          <option value="small">Small</option>
+          <option value="archive">Archive</option>
+        </select>
+        <label class="check"><input type="checkbox" id="audio"> Audio only</label>
+      </div>
+      <button type="submit" id="go">Download</button>
+      <p class="msg" id="add-msg" role="alert"></p>
+    </form>
+    <details class="card help" id="help">
+      <summary>Share links from other apps</summary>
+      <p><b>Android:</b> install this page (browser menu → <i>Install app</i> or <i>Add to Home screen</i>). Then in YouTube, Instagram or any app: Share → siphon.</p>
+      <p><b>iPhone:</b> make a Shortcut once.</p>
+      <ol>
+        <li>Shortcuts → <b>+</b> → name it <i>siphon</i> → turn on <i>Show in Share Sheet</i> (accepts URLs).</li>
+        <li>Add <b>Get Contents of URL</b>: <code id="api-url"></code>, Method <b>POST</b>, Header <code>Authorization</code> = <code>Bearer</code> + your token, Request Body <b>JSON</b> with <code>url</code> = <i>Shortcut Input</i> and <code>dest</code> = <code>box</code>.</li>
+        <li>Add <b>Show Notification</b>: “Sent to siphon”.</li>
+      </ol>
+      <div class="actions">
+        <button type="button" class="quiet" id="show-token">Show my token</button>
+        <button type="button" class="quiet" id="copy-token" hidden>Copy</button>
+      </div>
+      <p class="token" id="token" hidden></p>
+      <p class="fine">The token works like a password for this box. Anyone with it can add downloads.</p>
+    </details>
+    <h2 class="list-h">Downloads</h2>
+    <ol id="jobs" class="jobs"></ol>
+    <p class="empty" id="empty">Nothing yet. Paste a link above.</p>
+  </section>
+</main>
+</body>
+</html>

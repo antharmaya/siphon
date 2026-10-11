@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.part
+*.part.json
+/downloads/
+.pytest_cache/
+.siphon-capture-*/
+siphon.jsonl
+.signing-key.pem
+.ext-signing-key.pem

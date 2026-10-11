@@ -1,0 +1,55 @@
+[project]
+name = "antharmaya-siphon"  # PyPI's plain "siphon" is Unidata's weather library; the command is still `siphon`
+version = "0.2.0"
+description = "One sink for any download: video from 1,700+ sites, image posts, and blob:/MediaSource video other tools can't capture. CLI, browser button, queue."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Harshavardhan Beesabathina (varbees)", email = "harshavar968@gmail.com" }]
+keywords = ["video-downloader", "downloader", "yt-dlp", "gallery-dl", "blob", "mediasource", "hls", "dash", "browser-extension", "archiving"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "Intended Audience :: Science/Research",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Multimedia :: Video",
+]
+dependencies = [
+    "yt-dlp[default]>=2026.8.19",
+    "websockets>=13",      # siphon's own CDP client to the system Chrome (no Playwright)
+    "httpx[socks]>=0.28",
+    "rich>=13",
+    "gallery-dl>=1.27",   # image/gallery posts: Twitter/X, Instagram, Reddit, ... (video via yt-dlp)
+    "segno>=1.6",
+]
+
+[project.optional-dependencies]
+# TLS fingerprint impersonation for Cloudflare-fronted sites (+38 MB). `uv tool install -e '.[impersonate]'`
+impersonate = ["yt-dlp[curl-cffi]>=2026.8.19"]
+
+[project.urls]
+Homepage = "https://github.com/antharmaya/siphon"
+Issues = "https://github.com/antharmaya/siphon/issues"
+Source = "https://github.com/antharmaya/siphon"
+
+[project.scripts]
+siphon = "siphon.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/siphon"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

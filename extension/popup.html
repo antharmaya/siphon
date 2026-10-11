@@ -1,0 +1,87 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  :root { color-scheme: dark; }
+  body { width: 340px; margin: 0; font: 13px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+         background: #0d1117; color: #e6edf3; }
+  header { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 1px solid #21262d; }
+  header .logo { width: 20px; height: 20px; color: #1f6feb; }
+  header h1 { font-size: 14px; margin: 0; font-weight: 700; }
+  header .host { margin-left: auto; font-size: 11px; }
+  .host.ok { color: #3fb950; } .host.bad { color: #f85149; }
+  .controls { display: flex; gap: 8px; padding: 10px 14px; border-bottom: 1px solid #21262d; }
+  select, button { font: inherit; background: #161b22; color: #e6edf3; border: 1px solid #30363d;
+                   border-radius: 6px; padding: 5px 8px; }
+  button.primary { background: #1f6feb; border-color: #1f6feb; cursor: pointer; flex: 1; font-weight: 600; }
+  button.primary:hover { background: #388bfd; }
+  ul { list-style: none; margin: 0; padding: 6px; max-height: 320px; overflow-y: auto; }
+  li { display: flex; align-items: center; gap: 8px; padding: 8px; border-radius: 6px; }
+  li:hover { background: #161b22; }
+  .tag { font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 2px 6px; border-radius: 4px;
+         background: #21262d; color: #8b949e; flex: 0 0 auto; }
+  .tag.hls, .tag.dash { background: #1f3a5f; color: #79c0ff; }
+  .tag.file { background: #2d333b; color: #adbac7; }
+  .meta { flex: 1; min-width: 0; }
+  .meta .u { font-size: 11px; color: #8b949e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dl { cursor: pointer; background: none; border: 1px solid #30363d; padding: 4px 8px; border-radius: 6px; }
+  .dl:hover { background: #1f6feb; border-color: #1f6feb; }
+  .empty { padding: 20px 14px; color: #8b949e; text-align: center; }
+  #status { padding: 8px 14px; font-size: 11px; color: #8b949e; border-top: 1px solid #21262d; min-height: 16px;
+            display: flex; align-items: center; gap: 8px; }
+  #status.saved { color: #3fb950; }
+  #status span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+  .copy-btn { flex: 0 0 auto; cursor: pointer; background: #161b22; color: #8b949e; border: 1px solid #30363d;
+              border-radius: 5px; padding: 3px 6px; line-height: 0; }
+  .copy-btn:hover { background: #1f6feb; color: #fff; border-color: #1f6feb; }
+  .install { margin: 10px 14px; padding: 10px; background: #2d2416; border: 1px solid #5c4813; border-radius: 6px;
+             font-size: 11px; color: #e3b341; display: none; }
+  code { background: #161b22; padding: 1px 4px; border-radius: 3px; font-size: 10px; }
+  .target { padding: 10px 14px; border-top: 1px solid #21262d; display: grid; gap: 8px; }
+  .target .row { display: flex; gap: 10px; align-items: center; font-size: 12px; }
+  .target label { display: flex; gap: 5px; align-items: center; cursor: pointer; }
+  .target input[type=url], .target input[type=password] { width: 100%; box-sizing: border-box; font: inherit; font-size: 12px;
+    background: #161b22; color: #e6edf3; border: 1px solid #30363d; border-radius: 6px; padding: 5px 8px; }
+  .target .box[hidden] { display: none; }
+  .target .box { display: grid; gap: 6px; }
+  .target .hint { font-size: 11px; color: #8b949e; }
+  .target .result { font-size: 11px; }
+  .target .result.ok { color: #3fb950; } .target .result.bad { color: #f85149; }
+</style>
+</head>
+<body>
+  <header>
+    <img class="logo" src="states/idle.svg" alt="">
+    <h1>siphon</h1>
+    <span class="host" id="host">checking…</span>
+  </header>
+  <div class="install" id="install">
+    Native host not found. From the extension folder run:<br><code>./host/install.sh</code><br>then reload this extension.
+  </div>
+  <div class="controls">
+    <select id="preset" title="format preset">
+      <option value="best">best quality</option>
+      <option value="compat">compatible (H.264/MP4)</option>
+      <option value="small">small (≤720p)</option>
+      <option value="archive">archive (+metadata)</option>
+    </select>
+    <button class="primary" id="grab">Download this page</button>
+  </div>
+  <ul id="list"><li class="empty">Looking for media…</li></ul>
+  <div id="status"></div>
+  <div class="target">
+    <div class="row">Send downloads to
+      <label><input type="radio" name="target" value="local" checked> this computer</label>
+      <label><input type="radio" name="target" value="box"> my siphon box</label>
+    </div>
+    <div class="box" id="boxset" hidden>
+      <input type="url" id="boxUrl" placeholder="https://box.your-tailnet.ts.net" autocomplete="off">
+      <input type="password" id="boxToken" placeholder="token from: siphon serve token" autocomplete="off">
+      <div class="row"><button id="boxTest">Test</button><span class="result" id="boxResult"></span></div>
+      <span class="hint">Images still save here instantly; videos go to the box.</span>
+    </div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
