@@ -68,6 +68,29 @@ def profile_in_use(user_data_dir: Path) -> bool:
         return True
 
 
+def ua_override(product: str) -> dict:
+    """Network.setUserAgentOverride params that hide "HeadlessChrome" WITHOUT losing client hints.
+
+    Overriding only `userAgent` makes Chrome drop/blank the sec-ch-ua* headers — measured: a CDN
+    that checks client hints then refused siphon's browser while accepting plain headless Chrome.
+    Supplying userAgentMetadata keeps them consistent with the UA string.
+    """
+    full = product.split("/")[-1] or "150.0.0.0"
+    major = full.split(".")[0]
+    brands = [{"brand": "Google Chrome", "version": major}, {"brand": "Chromium", "version": major},
+              {"brand": "Not=A?Brand", "version": "24"}]
+    return {
+        "userAgent": f"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
+                     f"Chrome/{major}.0.0.0 Safari/537.36",
+        "userAgentMetadata": {
+            "brands": brands, "fullVersionList": [dict(b, version=full if b["version"] == major else b["version"])
+                                                  for b in brands],
+            "fullVersion": full, "platform": "Linux", "platformVersion": "", "architecture": "x86",
+            "model": "", "mobile": False, "bitness": "64", "wow64": False,
+        },
+    }
+
+
 @dataclass
 class Session:
     browser: "Browser"
@@ -241,7 +264,7 @@ class Browser:
 
 
 async def setup_target(sess: Session, *, init_scripts: list[str], bindings: list[str],
-                       blocked: list[str], user_agent: str | None) -> None:
+                       blocked: list[str], user_agent: dict | None) -> None:
     """Hooks every target gets before it runs a single script of its own."""
     b = sess.browser
 
@@ -274,7 +297,7 @@ async def setup_target(sess: Session, *, init_scripts: list[str], bindings: list
     if blocked:
         cmds.append(sess.send("Network.setBlockedURLs", {"urls": blocked}))
     if user_agent:
-        cmds.append(sess.send("Network.setUserAgentOverride", {"userAgent": user_agent}))
+        cmds.append(sess.send("Network.setUserAgentOverride", user_agent))  # see ua_override()
     # Children (out-of-process iframes, workers) attach to this session, paused, like us.
     cmds.append(sess.send("Target.setAutoAttach", {"autoAttach": True, "waitForDebuggerOnStart": True,
                                                    "flatten": True}))
