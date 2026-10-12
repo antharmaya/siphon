@@ -193,21 +193,36 @@ $("add").addEventListener("submit", async (e) => {
   if (dest === "device") { const w = pending(); w.add(r.data.id); remember(w); }
   $("url").value = "";
   upsert(r.data);
+  if (live) live.poke();
 });
 
 // ------------------------------------------------------------------ live updates
-let source = null;
-function listen() {
-  if (source) source.close();
-  source = new EventSource("/api/events");
-  source.addEventListener("snapshot", (e) => {
-    $("jobs").replaceChildren();
-    jobs.clear();
-    JSON.parse(e.data).reverse().forEach(upsert);
-    $("empty").hidden = jobs.size > 0;
-  });
-  source.addEventListener("job", (e) => upsert(JSON.parse(e.data)));
+// The whole list, from the SSE snapshot or a poll (live.js). Reconciled in place rather than
+// rebuilt, so a poll every 1.5 s doesn't restart every job's animation.
+function sync(list) {
+  const seen = new Set(list.map((j) => j.id));
+  [...jobs.keys()].filter((id) => !seen.has(id)).forEach((id) => upsert({ id, removed: true }));
+  list.slice().reverse().forEach(upsert);  // oldest first: render() prepends new rows
+  $("empty").hidden = jobs.size > 0;
 }
+
+let live = null;
+function listen() {
+  if (live) live.stop();
+  const me = live = liveUpdates({
+    connect: () => new EventSource("/api/events"),
+    fetchJobs: async () => {
+      const r = await api("GET", "/api/jobs");
+      if (r.status === 401) { me.stop(); showPair(); return null; }
+      return r.ok && Array.isArray(r.data) ? r.data : null;
+    },
+    onSnapshot: sync,
+    onJob: upsert,
+    busy: () => [...jobs.values()].some((j) => j.status === "active" || j.status === "pending"),
+  });
+  me.start();
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden && live) live.poke(); });
 
 // ------------------------------------------------------------------ start
 async function boot() {
