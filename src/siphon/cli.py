@@ -18,6 +18,7 @@ import hashlib
 import json
 import os
 import shutil
+import signal
 import sys
 import time
 from pathlib import Path
@@ -128,6 +129,10 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.progress_json:
         events.enable()
+    if signal.getsignal(signal.SIGTERM) is signal.SIG_DFL:
+        # `siphon serve` cancels a job with SIGTERM. Dying on it skips every finally: headless Chrome
+        # (its own session) outlives us and temp dirs stay in the download folder. Unwind like Ctrl+C.
+        signal.signal(signal.SIGTERM, _interrupt)
     if args.to:
         from .cloud import CloudError, split_target
         try:
@@ -170,11 +175,15 @@ def main(argv: list[str] | None = None) -> int:
     return 1 if failures else 0
 
 
+def _interrupt(*_) -> None:
+    raise KeyboardInterrupt
+
+
 def sweep_stale_captures(outdir: Path, max_age: float = 3600) -> None:
     """A killed run (Ctrl+C at the wrong moment, timeout, sleep) never reaches its cleanup;
-    its recorded blob tracks are useless after the fact. Drop any older than an hour."""
+    its recorded blob tracks and browser-fetch segments are useless after the fact. Drop any older than an hour."""
     try:
-        for d in outdir.glob(".siphon-capture-*"):
+        for d in [*outdir.glob(".siphon-capture-*"), *outdir.glob(".siphon-bf-*")]:
             if d.is_dir() and time.time() - d.stat().st_mtime > max_age:
                 shutil.rmtree(d, ignore_errors=True)
     except OSError:
@@ -238,6 +247,10 @@ def run_one(url: str, args, ydl: YtdlpEngine, outdir: Path, log) -> tuple[bool, 
         if headed and not args.json:
             err.print(f"  [green]caught[/] {esc(c.label())}  [dim]{esc(c.url[:110])}[/]")
 
+    from .download.browserfetch import browser_fetch
+
+    args.browser_fallback = lambda c, dest, progress: browser_fetch(c, dest, profile=sopts.profile, proxy=args.proxy,
+                                                                    cookies=sopts.cookies, log=log, progress=progress)
     sopts.no_gallery = args.no_gallery
     res = resolve(url, engine, ydl, sopts, proxy=args.proxy, on_found=on_found, log=log)
     sniffs = [res]
@@ -340,9 +353,10 @@ def choose(cands: list[Candidate], args) -> list[Candidate]:
 
 
 def do_download(c: Candidate, args, ydl: YtdlpEngine, outdir: Path, log) -> list[Path]:
+    fb = getattr(args, "browser_fallback", None)
     if c.kind != "file" or args.quiet or events.enabled():
         cb = events.progress if events.enabled() else None
-        return download(c, outdir, ydl, args.connections, args.proxy, progress=cb, log=log)
+        return download(c, outdir, ydl, args.connections, args.proxy, progress=cb, log=log, browser_fallback=fb)
     with Progress(TextColumn("[bold]{task.description}"), BarColumn(), DownloadColumn(), TransferSpeedColumn(),
                   TimeRemainingColumn(), console=err, transient=True) as prog:
         task = prog.add_task(f"{args.connections}×", total=c.size)
@@ -350,7 +364,7 @@ def do_download(c: Candidate, args, ydl: YtdlpEngine, outdir: Path, log) -> list
         def update(done: int, total: int | None) -> None:
             prog.update(task, completed=done, total=total)
 
-        return download(c, outdir, ydl, args.connections, args.proxy, progress=update, log=log)
+        return download(c, outdir, ydl, args.connections, args.proxy, progress=update, log=log, browser_fallback=fb)
 
 
 def show_table(cands: list[Candidate]) -> None:

@@ -75,6 +75,17 @@ PAGES["native_or_mse.html"] = PAGES["mse.html"].replace(
     "if (v.canPlayType('application/vnd.apple.mpegurl')) { document.title = 'native'; v.src = '/hls/master.m3u8'; throw 0; }\n"
     "document.title = 'mse';")
 
+# Browser-bound CDN on a different origin (localhost vs 127.0.0.1): answers only requests
+# carrying Chrome's client hints AND the page's Referer — what Python replay can't fake.
+PAGES["guarded_file.html"] = """<html><head><title>Guarded File</title></head><body>
+<video id=v muted autoplay src="http://localhost:__PORT__/g/media/clip.mp4"></video></body></html>"""
+PAGES["guarded_hls.html"] = """<html><head><title>Guarded HLS</title></head><body><script>
+fetch('http://localhost:__PORT__/g/hlsenc/master.m3u8').then(r => r.text()).then(() => document.title = 'Guarded HLS');
+</script></body></html>"""
+PAGES["guarded_crawl.html"] = PAGES["guarded_file.html"].replace("clip.mp4", "clip.mp4?crawl=1")
+# Single-file HLS: every segment is an EXT-X-BYTERANGE of one .ts.
+PAGES["guarded_hls_br.html"] = PAGES["guarded_hls.html"].replace("hlsenc/master.m3u8", "hlsbr/br.m3u8")
+
 OBSCURE = {"/o/a7f3": "v_frag.mp4", "/o/c91d": "a_frag.m4a", "/o/payload": "media/clip.mp4"}
 
 
@@ -105,10 +116,24 @@ def site(tmp_path_factory):
         "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=900000,RESOLUTION=640x360\nhi.m3u8\n"
         "#EXT-X-STREAM-INF:BANDWIDTH=300000,RESOLUTION=640x360\nlo.m3u8\n")
     (root / "big.bin").write_bytes(os.urandom(24 << 20))
-    for name, html in PAGES.items():
-        (root / name).write_text(html)
+    enc = root / "hlsenc"
+    enc.mkdir()
+    (enc / "enc.key").write_bytes(bytes.fromhex("00112233445566778899aabbccddeeff"))
+    (root / "keyinfo").write_text(f"enc.key\n{enc / 'enc.key'}\n")
+    _ff("-i", str(media / "clip.mp4"), "-c", "copy", "-hls_time", "2", "-hls_playlist_type", "vod",
+        "-hls_key_info_file", str(root / "keyinfo"), "-hls_segment_filename", str(enc / "e_%03d.ts"),
+        str(enc / "enc.m3u8"))
+    (enc / "master.m3u8").write_text("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=800000\nenc.m3u8\n")
+    (root / "hlsbr").mkdir()
+    # Keyframes every 2 s, or the whole clip is one segment and one range — which tests nothing.
+    _ff("-i", str(media / "clip.mp4"), "-c:v", "libx264", "-g", "50", "-c:a", "copy", "-hls_time", "2",
+        "-hls_playlist_type", "vod", "-hls_flags", "single_file", str(root / "hlsbr" / "br.m3u8"))
+    assert (root / "hlsbr" / "br.m3u8").read_text().count("#EXT-X-BYTERANGE") >= 3
 
     srv = ThreadingHTTPServer(("127.0.0.1", 0), _handler(root))
+    port = srv.server_address[1]
+    for name, html in PAGES.items():
+        (root / name).write_text(html.replace("__PORT__", str(port)))
     srv.daemon_threads = True
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     base = f"http://127.0.0.1:{srv.server_address[1]}"
@@ -121,16 +146,28 @@ def _handler(root: Path):
         protocol_version = "HTTP/1.1"
         slow_first_range = False  # toggled by tests to force work-stealing
         throttle_all = False  # per-connection bandwidth cap, like a throttling CDN
+        seen: list[str] = []  # every request path, for tests that assert something was never fetched
 
         def log_message(self, *a):
             pass
 
         def do_GET(self):
+            H.seen.append(self.path)
+            self.cors = False
             path = self.path.split("?")[0]
+            if path == "/redir":
+                return self._send(302, b"", "text/plain", {"Location": self.path.split("to=", 1)[1]})
             if path == "/hang":
                 # An ad iframe whose server never answers: its frame never gets a JS context.
                 time.sleep(90)
                 return self._send(200, b"<html></html>", "text/html")
+            if path.startswith("/g/"):
+                ok = self.headers.get("sec-ch-ua") and (self.headers.get("Referer") or "").startswith("http://127.0.0.1:")
+                if not ok:
+                    return self._send(403, b"browser only", "text/plain")
+                path = path[2:]
+                # The HLS CDN allows script fetches; the file CDN doesn't. Per request: handlers run concurrently.
+                self.cors = path.startswith(("/hlsenc/", "/hlsbr/"))
             if path == "/o/sizes":
                 body = ('{"v": %d, "a": %d}' % ((root / "v_frag.mp4").stat().st_size,
                                                 (root / "a_frag.m4a").stat().st_size)).encode()
@@ -157,8 +194,11 @@ def _handler(root: Path):
             self.send_header("Content-Length", str(b - a + 1))
             self.send_header("Accept-Ranges", "bytes")
             self.send_header("ETag", f'"{size}-{int(f.stat().st_mtime)}"')
+            if self.cors:
+                self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             slow = f.name == "big.bin" and b > 0 and (H.throttle_all or (H.slow_first_range and a == 0))
+            crawl = "crawl=1" in self.path  # ~5 s for clip.mp4: long enough to cancel mid-download
             with open(f, "rb") as fh:
                 fh.seek(a)
                 left = b - a + 1
@@ -169,13 +209,17 @@ def _handler(root: Path):
                         left -= len(chunk)
                         if slow:
                             time.sleep(0.05)
+                        if crawl:
+                            time.sleep(0.5)
                 except (BrokenPipeError, ConnectionResetError):
                     pass
 
-        def _send(self, code, body, ctype):
+        def _send(self, code, body, ctype, headers=None):
             self.send_response(code)
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(body)))
+            for k, v in (headers or {}).items():
+                self.send_header(k, v)
             self.end_headers()
             self.wfile.write(body)
 

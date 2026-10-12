@@ -31,7 +31,7 @@ from typing import Callable, Literal
 from ..media import canonical, classify, is_ad, is_segment, manifest_drm
 from ..models import Candidate
 from .capture import CaptureSink
-from .cdp import Browser, Session, find_chrome, has_proprietary_codecs, setup_target
+from .cdp import Browser, Session, find_chrome, has_proprietary_codecs, setup_target, ua_override
 
 PROFILE_DIR = Path(os.environ.get("SIPHON_PROFILE", Path.home() / ".local/share/siphon/profile"))
 
@@ -221,12 +221,6 @@ class SniffResult:
 
 def chrome_path() -> str | None:
     return find_chrome()
-
-
-def _user_agent(product: str) -> str:
-    # product: "HeadlessChrome/152.0.7977.64" — a HeadlessChrome UA is the cheapest bot tell there is.
-    major = product.split("/")[-1].split(".")[0] or "150"
-    return f"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{major}.0.0.0 Safari/537.36"
 
 
 def score(c: Candidate) -> float:
@@ -433,7 +427,8 @@ async def sniff(url: str, opts: SniffOptions, on_found: Callable[[Candidate], No
     tab = _Tab(browser)
     try:
         version = await browser.send("Browser.getVersion", timeout=10)
-        ua = _user_agent(version.get("product", ""))
+        ua_params = ua_override(version.get("product", ""))
+        ua = ua_params["userAgent"]
         init = [INIT_JS] + (["window.__siphonRecord = false;"] if opts.capture == "off" else [])
         bindings = ["__siphonReport", "__siphonChunk", "__siphonBlobDone"]
         blocked = _blocked_patterns() if opts.block_ads else []
@@ -455,7 +450,7 @@ async def sniff(url: str, opts: SniffOptions, on_found: Callable[[Candidate], No
                 browser.spawn(browser.send("Target.closeTarget", {"targetId": sess.target_id}, timeout=5))
                 return
             await setup_target(sess, init_scripts=init, bindings=bindings, blocked=blocked,
-                               user_agent=None if opts.headed else ua)
+                               user_agent=None if opts.headed else ua_params)
             if sess.type == "page" and tab.main is None:
                 tab.main = sess
                 main_ready.set()

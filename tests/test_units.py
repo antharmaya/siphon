@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import hashlib
 
@@ -174,11 +175,68 @@ def test_sweep_stale_captures(tmp_path):
 
     from siphon.cli import sweep_stale_captures
 
-    old, new = tmp_path / ".siphon-capture-1", tmp_path / ".siphon-capture-2"
-    old.mkdir(); new.mkdir()
-    os.utime(old, (time.time() - 7200, time.time() - 7200))
+    old, new, bf = tmp_path / ".siphon-capture-1", tmp_path / ".siphon-capture-2", tmp_path / ".siphon-bf-x"
+    old.mkdir(); new.mkdir(); bf.mkdir()
+    for d in (old, bf):
+        os.utime(d, (time.time() - 7200, time.time() - 7200))
     sweep_stale_captures(tmp_path)
-    assert not old.exists() and new.exists(), "only captures older than an hour are swept"
+    assert not old.exists() and not bf.exists() and new.exists(), "only work dirs older than an hour are swept"
+
+
+def test_hls_parsing_and_aes128():
+    from Cryptodome.Cipher import AES
+
+    from siphon.download.browserfetch import aes128_decrypt, parse_media, pick_variant
+
+    master = ('#EXTM3U\n#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="a",NAME="en",DEFAULT=YES,URI="audio/en.m3u8"\n'
+              '#EXT-X-STREAM-INF:BANDWIDTH=300000,AUDIO="a"\nlo.m3u8\n#EXT-X-STREAM-INF:BANDWIDTH=900000,AUDIO="a"\nhi.m3u8\n')
+    assert pick_variant(master, "https://c.dn/v/master.m3u8") == ("https://c.dn/v/hi.m3u8", "https://c.dn/v/audio/en.m3u8")
+    media = parse_media('#EXTM3U\n#EXT-X-MEDIA-SEQUENCE:7\n#EXT-X-KEY:METHOD=AES-128,URI="k.key"\n#EXTINF:2,\ns1.ts\n'
+                        '#EXT-X-ENDLIST\n', "https://c.dn/v/hi.m3u8")
+    assert media["segments"][0] == {"url": "https://c.dn/v/s1.ts", "seq": 7, "key": ("https://c.dn/v/k.key", None),
+                                    "range": None}
+    assert not media["live"]
+    key, plain = bytes(range(16)), b"segment-bytes" + b"\x03" * 3  # PKCS7-padded to 16
+    data = AES.new(key, AES.MODE_CBC, (7).to_bytes(16, "big")).encrypt(plain)
+    assert aes128_decrypt(data, key, None, 7) == b"segment-bytes"  # IV defaults to the sequence number
+    # Single-file HLS: an offset-less BYTERANGE continues where the previous range of that URI ended.
+    br = parse_media('#EXTM3U\n#EXT-X-MAP:URI="v.mp4",BYTERANGE="800@0"\n#EXT-X-BYTERANGE:1000@800\nv.mp4\n'
+                     '#EXT-X-BYTERANGE:500\nv.mp4\n#EXT-X-ENDLIST\n', "https://c.dn/v/x.m3u8")
+    assert br["init"] == {"url": "https://c.dn/v/v.mp4", "range": (0, 799)}
+    assert [s["range"] for s in br["segments"]] == [(800, 1799), (1800, 2299)]
+
+
+def test_local_network_scope():
+    from siphon import netcheck
+
+    assert [netcheck.scope(h) for h in ("127.0.0.1", "::1", "::ffff:127.0.0.1", "0.0.0.0", "169.254.169.254",
+                                        "localhost")] == [2] * 6
+    assert [netcheck.scope(h) for h in ("192.168.1.10", "10.0.0.2", "100.100.1.1", "fd00::1")] == [1] * 4
+    assert netcheck.scope("8.8.8.8") == 0
+    assert netcheck.inward("http://169.254.169.254/latest/meta-data/x.mp4", "https://8.8.8.8/page")
+    assert netcheck.inward("http://192.168.1.1/admin.mp4", "https://8.8.8.8/page")
+    assert not netcheck.inward("http://192.168.1.5/a.mp4", "http://192.168.1.2/nas")  # a LAN page's own LAN media
+    assert not netcheck.inward("https://8.8.8.8/a.mp4", "http://127.0.0.1:8080/dev")
+
+
+def test_media_on_a_more_local_network_than_its_page_is_refused(tmp_path, monkeypatch):
+    # A public page embedding <video src="http://169.254.169.254/..."> must not get the reply saved
+    # where `siphon serve` would hand it to the phone — by the plain downloader or the Chrome fallback.
+    from siphon.download import LocalNetworkRefused, browserfetch, download
+    from siphon.models import Candidate
+
+    monkeypatch.setattr(browserfetch, "find_chrome", lambda: pytest.fail("launched Chrome for a refused URL"))
+    for kind in ("file", "hls"):
+        c = Candidate(url=f"http://169.254.169.254/latest/meta-data/v.{'mp4' if kind == 'file' else 'm3u8'}",
+                      kind=kind, source="sniff", page_url="https://8.8.8.8/watch")
+        with pytest.raises(LocalNetworkRefused):
+            download(c, tmp_path / "out", None, 4, None, browser_fallback=lambda *a: pytest.fail("fell back"))
+        with pytest.raises(browserfetch.BrowserFetchError, match="more local"):
+            browserfetch.browser_fetch(c, tmp_path / "x.mp4")
+    assert not (tmp_path / "out").exists() and list(tmp_path.iterdir()) == [], "nothing may be written"
+    seg = browserfetch._Fetcher(None, None, "https://8.8.8.8/watch")  # an HLS segment or key pointing inward
+    with pytest.raises(browserfetch.BrowserFetchError, match="more local"):
+        asyncio.run(seg.get("http://127.0.0.1:9/s1.ts", None))
 
 
 def test_gallery_supported_classification():
