@@ -174,7 +174,7 @@ class App:
         return caps
 
 
-STATIC = {"/": "index.html", "/app.js": "app.js", "/app.css": "app.css", "/manifest.webmanifest": "manifest.webmanifest",
+STATIC = {"/": "index.html", "/live.js": "live.js", "/app.js": "app.js", "/app.css": "app.css", "/manifest.webmanifest": "manifest.webmanifest",
           "/mark.svg": "mark.svg", "/lockup.svg": "lockup.svg", "/icon-192.png": "icon-192.png", "/icon-512.png": "icon-512.png", "/sw.js": "sw.js",
           **{f"/states/{n}.svg": f"states/{n}.svg" for n in ("resolving", "downloading", "done", "error")}}
 CSP = ("default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self'; script-src 'self'; "

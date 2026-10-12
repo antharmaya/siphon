@@ -1,8 +1,8 @@
 // siphon serve's service worker: makes the app installable (and a share target) and lets the shell
 // open offline. Network first, always: the cache is only a fallback, so an update is never hidden
 // behind a stale copy. The API, pairing and downloaded files are never cached.
-const CACHE = "siphon-shell-v1";
-const SHELL = ["/", "/app.js", "/app.css", "/lockup.svg", "/mark.svg", "/manifest.webmanifest"];
+const CACHE = "siphon-shell-v2";
+const SHELL = ["/", "/live.js", "/app.js", "/app.css", "/lockup.svg", "/mark.svg", "/manifest.webmanifest"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));

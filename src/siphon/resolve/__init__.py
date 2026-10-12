@@ -1,6 +1,6 @@
 """Resolver chain: cheapest and most precise first, the browser last.
 
-  direct  ~0.1s  the URL is itself a media file/manifest
+  direct  ~0.1s  the URL is itself a media file/manifest (not asked of pages yt-dlp knows)
   ytdlp   ~1-5s  a dedicated extractor knows the site (best metadata, all formats)
   sniff   ~5-30s load it in Chrome and watch the network / record the blob: stream
 
@@ -15,6 +15,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Callable, Literal
 
+from ..media import classify
 from ..models import Candidate
 from ..ytdlp import Unsupported, YtdlpEngine, dedicated_extractor
 from . import direct, gallery
@@ -47,7 +48,13 @@ def resolve(url: str, engine: Engine, ydl: YtdlpEngine, sopts: SniffOptions, pro
         d, t = now - t, now
         return f" ({d:.1f}s)"
 
-    if engine in ("auto", "direct"):
+    # yt-dlp's extractor for this site, looked up once (~20ms on a known site). A page on a site
+    # yt-dlp knows, whose URL doesn't look like a media file, isn't one: skip direct's GET of it
+    # (0.4-2.5s measured on YouTube, the page fetched only to be thrown away). A URL that looks
+    # like media keeps the old order, so a pasted .mp4 never waits for the extractor lookup.
+    looks_media = classify(url) is not None
+    ded = dedicated_extractor(url) if engine == "auto" and not looks_media else None
+    if engine == "direct" or (engine == "auto" and ded is None):
         c = direct.probe(url, proxy=proxy)
         res.tried.append(("direct", ("media URL" if c else "not media") + took()))
         if c:
@@ -55,10 +62,12 @@ def resolve(url: str, engine: Engine, ydl: YtdlpEngine, sopts: SniffOptions, pro
             return res
         if engine == "direct":
             return res
+        if looks_media:
+            ded = dedicated_extractor(url)
 
     # Unknown site (no dedicated extractor): don't make the browser wait for yt-dlp's
     # Generic probe (~5s, usually fruitless). Run both at once; best result wins on score.
-    if engine == "auto" and not sopts.headed and dedicated_extractor(url) is None:
+    if engine == "auto" and not sopts.headed and ded is None:
         log("unknown site: racing yt-dlp's generic extractor against Chrome…")
         site, r, gen_note = asyncio.run(_race(url, ydl, sopts, on_found))
         res.tried.append(("ytdlp", gen_note))
@@ -70,13 +79,15 @@ def resolve(url: str, engine: Engine, ydl: YtdlpEngine, sopts: SniffOptions, pro
     # Image posts (tweets, IG posts): gallery-dl gets every image AND any video. Prefer it over
     # yt-dlp whenever the post actually has images, or when yt-dlp wouldn't handle the URL at all —
     # so video-only posts on sites yt-dlp knows keep going through yt-dlp (better video).
-    if engine == "auto" and not getattr(sopts, "no_gallery", False) and gallery.supported(url):
+    # Passing `ded` checks only gallery-dl's modules for that site: none for YouTube or Vimeo, so
+    # no ~1s scan of all of gallery-dl to learn that it has nothing.
+    if engine == "auto" and not getattr(sopts, "no_gallery", False) and gallery.supported(url, ded):
         gc = gallery.probe(url, cookies_browser=ydl.cfg.cookies_from_browser,
-                           cookies_file=ydl.cfg.cookies_file, proxy=proxy)
+                           cookies_file=ydl.cfg.cookies_file, proxy=proxy, site=ded)
         if gc is not None:
             info = gc.info or {}
             has_images = info.get("videos", 0) < info.get("count", 0)
-            if has_images or dedicated_extractor(url) is None:
+            if has_images or ded is None:
                 res.tried.append(("gallery", gc.note + took()))
                 res.candidates.append(gc)
                 return res

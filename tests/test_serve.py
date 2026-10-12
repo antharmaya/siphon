@@ -216,3 +216,107 @@ def test_installable_share_target_and_the_shortcut_token(box):
     assert httpx.get(base + "/api/token").status_code == 401  # never to an unpaired caller
     c = paired(base)
     assert c.get("/api/token").json()["token"] == serve.api_token()
+
+
+# ------------------------------------------------------------------ live updates in the PWA
+# Cloudflare quick tunnels buffer SSE until the stream closes, so the page must notice the silence
+# and poll. live.js has no DOM, so node drives it here with a fake clock and a fake EventSource.
+LIVE_HARNESS = r"""
+const vm = require("vm"), fs = require("fs");
+let now = 0, nextId = 1, timers = [];
+const clock = {
+  setTimeout(fn, ms) { const id = nextId++; timers.push({ id, at: now + ms, fn }); return id; },
+  clearTimeout(id) { timers = timers.filter((t) => t.id !== id); },
+};
+const flush = async () => { for (let i = 0; i < 20; i++) await Promise.resolve(); };
+async function advance(to) {
+  for (;;) {
+    timers.sort((a, b) => a.at - b.at || a.id - b.id);
+    const t = timers[0];
+    if (!t || t.at > to) break;
+    timers.shift(); now = t.at; t.fn(); await flush();
+  }
+  now = to;
+}
+class FakeES {  // plays a script of [ms after open, "snapshot" | "job" | "error"]
+  constructor(script) {
+    this.closed = false; this.on = {}; this.onerror = null;
+    for (const [at, what] of script) clock.setTimeout(() => this.closed || this.fire(what), at);
+  }
+  addEventListener(name, fn) { this.on[name] = fn; }
+  fire(what) {
+    if (what === "error") return this.onerror && this.onerror();
+    this.on[what] && this.on[what]({ data: what === "snapshot" ? "[]" : '{"id":"ab12"}' });
+  }
+  close() { this.closed = true; }
+}
+const ctx = vm.createContext({});
+vm.runInContext(fs.readFileSync(process.argv[2], "utf8"), ctx);
+async function scenario(scripts, busy, until, marks) {
+  timers = []; now = 0;
+  const out = { polls: [], snapshots: 0, connects: 0, modes: {} }, made = [];
+  const live = ctx.liveUpdates({
+    connect: () => { const es = new FakeES(scripts[made.length] || []); made.push(es); out.connects++; return es; },
+    fetchJobs: async () => { out.polls.push(now); return []; },
+    onSnapshot: () => out.snapshots++, onJob: () => {}, busy: () => busy, timers: clock,
+  });
+  live.start();
+  for (const m of marks) { await advance(m); out.modes[m] = live.mode; }
+  await advance(until);
+  out.closed = made.map((e) => e.closed);
+  out.mode = live.mode;
+  return out;
+}
+(async () => console.log(JSON.stringify({
+  buffered: await scenario([], true, 7600, [2999, 3000]),
+  idle: await scenario([], false, 23100, []),
+  working: await scenario([[[100, "snapshot"], [5000, "job"]]], true, 30000, []),
+  refused: await scenario([[[50, "error"]]], true, 100, []),
+  recovers: await scenario([[], [[200, "snapshot"]]], true, 70000, [59999]),
+})))();
+"""
+
+
+@pytest.fixture(scope="module")
+def live_runs(tmp_path_factory):
+    import shutil
+    import subprocess
+
+    if not shutil.which("node"):
+        pytest.skip("node not installed")
+    h = tmp_path_factory.mktemp("live") / "harness.js"
+    h.write_text(LIVE_HARNESS)
+    r = subprocess.run(["node", str(h), str(serve.WEB / "live.js")], capture_output=True, text=True, timeout=30)
+    assert r.returncode == 0, r.stderr
+    return json.loads(r.stdout)
+
+
+def test_silent_event_stream_falls_back_to_polling(live_runs):
+    b = live_runs["buffered"]
+    assert b["modes"] == {"2999": "sse", "3000": "polling"}  # waits ~3 s for the snapshot, no longer
+    assert b["polls"] == [3000, 4500, 6000, 7500]  # every 1.5 s while a job is active
+    assert b["closed"] == [True]  # a buffered stream must not flush a stale snapshot later
+    assert live_runs["idle"]["polls"] == [3000, 13000, 23000]  # slower when nothing is running
+
+
+def test_working_event_stream_never_polls(live_runs):
+    w = live_runs["working"]
+    assert w["mode"] == "sse" and w["polls"] == [] and w["snapshots"] == 1 and w["closed"] == [False]
+    r = live_runs["refused"]
+    assert r["mode"] == "polling" and r["polls"] == [50]  # an error doesn't wait out the 3 s
+
+
+def test_polling_hands_back_to_sse_when_it_gets_through(live_runs):
+    r = live_runs["recovers"]  # SSE retried at 63 s; that stream's snapshot arrives at 63.2 s
+    assert r["modes"]["59999"] == "polling" and r["connects"] == 2 and r["mode"] == "sse"
+    assert r["closed"] == [True, False] and max(r["polls"]) < 63200  # polling stopped once it spoke
+
+
+def test_live_updates_script_is_served_and_cached(box):
+    _, base, _ = box
+    r = httpx.get(base + "/live.js")
+    assert r.status_code == 200 and r.headers["content-type"].startswith("text/javascript")
+    page = httpx.get(base + "/").text
+    assert page.index("/live.js") < page.index("/app.js")  # app.js calls liveUpdates at boot
+    assert "liveUpdates({" in httpx.get(base + "/app.js").text  # not a bare EventSource
+    assert '"/live.js"' in httpx.get(base + "/sw.js").text  # offline shell needs it too
