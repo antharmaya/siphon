@@ -126,6 +126,15 @@ def test_cloud_cli_list_and_default(fakecloud, capsys):
     assert cloud.main(["add", "weird name"]) == 1
 
 
+@needs_rclone
+def test_cloud_add_never_prints_the_stored_config(fakecloud, capfd):
+    # rclone prints the finished config (a Drive refresh token, for one) on stdout
+    assert cloud.main(["add", "disk", "--type", "sftp", "host=example.invalid", "user=me"]) == 0
+    out, err = capfd.readouterr()
+    assert "host = example.invalid" not in out + err and "connected" in err
+    assert ("disk", "sftp") in cloud.remotes()
+
+
 @pytest.fixture
 def fake_rclone(tmp_path, monkeypatch):
     """A stand-in rclone with an R2 remote and a Drive remote; `link` prints a presigned URL."""

@@ -167,7 +167,8 @@ def main(argv: list[str]) -> int:
             backend, fixed = KINDS[kind]
             extra = [f"{k}={v}" for k, v in fixed.items()] + list(args.params)
             err.print(f"connecting [bold]{args.name}[/] ({backend}); rclone may open your browser to sign in…")
-            r = subprocess.run([rclone(), "config", "create", args.name, backend, *extra])
+            # stdout carries the finished config, OAuth refresh token included; the sign-in link is on stderr
+            r = subprocess.run([rclone(), "config", "create", args.name, backend, *extra], stdout=subprocess.DEVNULL)
             if r.returncode != 0:
                 raise CloudError("rclone couldn't create it (see above)")
             cfg = paths.load_config()
