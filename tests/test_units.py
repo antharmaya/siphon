@@ -181,6 +181,33 @@ def test_sweep_stale_captures(tmp_path):
     assert not old.exists() and new.exists(), "only captures older than an hour are swept"
 
 
+def test_local_network_scope():
+    from siphon import netcheck
+
+    assert [netcheck.scope(h) for h in ("127.0.0.1", "::1", "::ffff:127.0.0.1", "0.0.0.0", "169.254.169.254",
+                                        "localhost")] == [2] * 6
+    assert [netcheck.scope(h) for h in ("192.168.1.10", "10.0.0.2", "100.100.1.1", "fd00::1")] == [1] * 4
+    assert netcheck.scope("8.8.8.8") == 0
+    assert netcheck.inward("http://169.254.169.254/latest/meta-data/x.mp4", "https://8.8.8.8/page")
+    assert netcheck.inward("http://192.168.1.1/admin.mp4", "https://8.8.8.8/page")
+    assert not netcheck.inward("http://192.168.1.5/a.mp4", "http://192.168.1.2/nas")  # a LAN page's own LAN media
+    assert not netcheck.inward("https://8.8.8.8/a.mp4", "http://127.0.0.1:8080/dev")
+
+
+def test_media_on_a_more_local_network_than_its_page_is_refused(tmp_path):
+    # A public page embedding <video src="http://169.254.169.254/..."> must not get the reply saved
+    # where `siphon serve` would hand it to the phone.
+    from siphon.download import LocalNetworkRefused, download
+    from siphon.models import Candidate
+
+    for kind in ("file", "hls"):
+        c = Candidate(url=f"http://169.254.169.254/latest/meta-data/v.{'mp4' if kind == 'file' else 'm3u8'}",
+                      kind=kind, source="sniff", page_url="https://8.8.8.8/watch")
+        with pytest.raises(LocalNetworkRefused):
+            download(c, tmp_path / "out", None, 4, None)
+    assert list(tmp_path.iterdir()) == [], "nothing may be written"
+
+
 def test_gallery_supported_classification():
     from siphon.resolve import gallery
 

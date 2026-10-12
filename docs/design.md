@@ -34,6 +34,10 @@ phone see the same jobs.
 `jobs.build_args` maps that to CLI flags from an allowlist. Raw flags would let a client point
 `-o` anywhere or make siphon read local files (`--cookies`, `-a`). URLs must be http(s), and
 loopback and link-local addresses (including cloud metadata at 169.254.169.254) are refused.
+The media a page points at is the page author's choice, not the client's, so it is held to a
+second line (`netcheck.inward`): never on a more local network than the page itself. A public page
+can't get siphon to fetch 127.0.0.1, a router or the metadata service and save the reply where the
+phone can download it; a NAS page can still serve its own LAN media.
 
 **Defence in depth on the HTTP side.** It binds to 127.0.0.1 by default. A Host-header allowlist
 blocks DNS rebinding (a web page pointing its own hostname at your machine). Devices pair with a

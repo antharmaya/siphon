@@ -12,12 +12,17 @@ import shutil
 import subprocess
 from pathlib import Path
 from typing import Callable
+from urllib.parse import urlsplit
 
-from .. import tools
+from .. import netcheck, tools
 from ..media import ext_of, safe_filename
 from ..models import Candidate
 from ..ytdlp import YtdlpEngine
 from .segmented import SegmentedDownloader
+
+
+class LocalNetworkRefused(Exception):
+    pass
 
 
 class DrmProtected(Exception):
@@ -46,6 +51,10 @@ def download(c: Candidate, outdir: Path, ydl: YtdlpEngine, connections: int, pro
              name: str | None = None) -> list[Path]:
     if c.drm:
         raise DrmProtected(c.drm)
+    # The page is the URL someone asked for (and `siphon serve` vetted); the media URL came from the
+    # page or a redirect, so it is the attacker's choice. See netcheck.inward.
+    if c.kind in ("file", "hls", "dash") and c.page_url and netcheck.inward(c.url, c.page_url):
+        raise LocalNetworkRefused(f"{urlsplit(c.url).hostname} is on a more local network than {c.page_url[:80]}")
     outdir.mkdir(parents=True, exist_ok=True)
     stem = safe_filename(name or name_for(c))
 

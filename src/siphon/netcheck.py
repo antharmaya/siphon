@@ -14,6 +14,7 @@ Neither check runs when a proxy is in use: the proxy does its own DNS and exit.
 
 from __future__ import annotations
 
+import functools
 import ipaddress
 import re
 import socket
@@ -100,6 +101,35 @@ def _is_local(host: str) -> bool:
         return ip.is_private or ip.is_loopback or ip.is_link_local
     except ValueError:
         return False
+
+
+@functools.lru_cache(maxsize=256)
+def scope(host: str) -> int:
+    """0 public, 1 a private network (LAN, CGNAT/Tailscale, ULA), 2 this machine or its link
+    (loopback, 0.0.0.0, link-local: cloud metadata lives at 169.254.169.254). A name counts as its
+    most local address; one that doesn't resolve here (proxy-only, typo) as public."""
+    try:
+        ips = [ipaddress.ip_address(host.strip("[]"))]
+    except ValueError:
+        try:
+            ips = [ipaddress.ip_address(i[4][0].split("%")[0]) for i in socket.getaddrinfo(host, None)]
+        except (OSError, UnicodeError, ValueError):
+            return 0
+    out = 0
+    for ip in ips:
+        ip = getattr(ip, "ipv4_mapped", None) or ip  # ::ffff:127.0.0.1 isn't loopback to Python < 3.13
+        if ip.is_loopback or ip.is_link_local or ip.is_unspecified or ip.is_multicast:
+            return 2
+        if not ip.is_global:
+            out = 1
+    return out
+
+
+def inward(url: str, page: str) -> bool:
+    """`url` sits on a more local network than the page that named it. A public page pointing at
+    127.0.0.1, a router or 169.254.169.254 must not get siphon to fetch it and save the reply where
+    `siphon serve` hands it to a phone; Chrome's Local Network Access draws the same line."""
+    return scope(urlsplit(url).hostname or "") > scope(urlsplit(page).hostname or "")
 
 
 def check(url: str) -> Reach:
