@@ -82,6 +82,7 @@ PAGES["guarded_file.html"] = """<html><head><title>Guarded File</title></head><b
 PAGES["guarded_hls.html"] = """<html><head><title>Guarded HLS</title></head><body><script>
 fetch('http://localhost:__PORT__/g/hlsenc/master.m3u8').then(r => r.text()).then(() => document.title = 'Guarded HLS');
 </script></body></html>"""
+PAGES["guarded_crawl.html"] = PAGES["guarded_file.html"].replace("clip.mp4", "clip.mp4?crawl=1")
 # Single-file HLS: every segment is an EXT-X-BYTERANGE of one .ts.
 PAGES["guarded_hls_br.html"] = PAGES["guarded_hls.html"].replace("hlsenc/master.m3u8", "hlsbr/br.m3u8")
 
@@ -197,6 +198,7 @@ def _handler(root: Path):
                 self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             slow = f.name == "big.bin" and b > 0 and (H.throttle_all or (H.slow_first_range and a == 0))
+            crawl = "crawl=1" in self.path  # ~5 s for clip.mp4: long enough to cancel mid-download
             with open(f, "rb") as fh:
                 fh.seek(a)
                 left = b - a + 1
@@ -207,6 +209,8 @@ def _handler(root: Path):
                         left -= len(chunk)
                         if slow:
                             time.sleep(0.05)
+                        if crawl:
+                            time.sleep(0.5)
                 except (BrokenPipeError, ConnectionResetError):
                     pass
 

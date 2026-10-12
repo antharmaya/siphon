@@ -18,6 +18,7 @@ import hashlib
 import json
 import os
 import shutil
+import signal
 import sys
 import time
 from pathlib import Path
@@ -128,6 +129,10 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.progress_json:
         events.enable()
+    if signal.getsignal(signal.SIGTERM) is signal.SIG_DFL:
+        # `siphon serve` cancels a job with SIGTERM. Dying on it skips every finally: headless Chrome
+        # (its own session) outlives us and temp dirs stay in the download folder. Unwind like Ctrl+C.
+        signal.signal(signal.SIGTERM, _interrupt)
     if args.to:
         from .cloud import CloudError, split_target
         try:
@@ -170,11 +175,15 @@ def main(argv: list[str] | None = None) -> int:
     return 1 if failures else 0
 
 
+def _interrupt(*_) -> None:
+    raise KeyboardInterrupt
+
+
 def sweep_stale_captures(outdir: Path, max_age: float = 3600) -> None:
     """A killed run (Ctrl+C at the wrong moment, timeout, sleep) never reaches its cleanup;
-    its recorded blob tracks are useless after the fact. Drop any older than an hour."""
+    its recorded blob tracks and browser-fetch segments are useless after the fact. Drop any older than an hour."""
     try:
-        for d in outdir.glob(".siphon-capture-*"):
+        for d in [*outdir.glob(".siphon-capture-*"), *outdir.glob(".siphon-bf-*")]:
             if d.is_dir() and time.time() - d.stat().st_mtime > max_age:
                 shutil.rmtree(d, ignore_errors=True)
     except OSError:

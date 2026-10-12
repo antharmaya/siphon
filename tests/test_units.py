@@ -175,11 +175,12 @@ def test_sweep_stale_captures(tmp_path):
 
     from siphon.cli import sweep_stale_captures
 
-    old, new = tmp_path / ".siphon-capture-1", tmp_path / ".siphon-capture-2"
-    old.mkdir(); new.mkdir()
-    os.utime(old, (time.time() - 7200, time.time() - 7200))
+    old, new, bf = tmp_path / ".siphon-capture-1", tmp_path / ".siphon-capture-2", tmp_path / ".siphon-bf-x"
+    old.mkdir(); new.mkdir(); bf.mkdir()
+    for d in (old, bf):
+        os.utime(d, (time.time() - 7200, time.time() - 7200))
     sweep_stale_captures(tmp_path)
-    assert not old.exists() and new.exists(), "only captures older than an hour are swept"
+    assert not old.exists() and not bf.exists() and new.exists(), "only work dirs older than an hour are swept"
 
 
 def test_hls_parsing_and_aes128():

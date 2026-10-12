@@ -156,6 +156,27 @@ def test_browser_fallback_reports_on_the_progress_channel(site, tmp_path):
     assert last["percent"] == 100.0 and last["done"] == (site["root"] / "media" / "clip.mp4").stat().st_size
 
 
+def test_cancel_during_browser_fallback_cleans_up(site, tmp_path):
+    # `siphon serve` cancels with SIGTERM. Its default action skips every finally: Chrome (own session)
+    # outlived siphon and the fallback's work dir stayed in the download folder.
+    import signal
+    import time
+
+    out, err = tmp_path / "out", tmp_path / "err.log"
+    with open(err, "w") as ef:
+        p = subprocess.Popen([sys.executable, "-m", "siphon", "--progress-json", "--no-profile", "--timeout", "15",
+                              "-o", str(out), f"{site['base']}/guarded_crawl.html"], stdout=subprocess.DEVNULL, stderr=ef)
+        deadline = time.time() + 90
+        while "letting Chrome" not in err.read_text() and p.poll() is None and time.time() < deadline:
+            time.sleep(0.2)
+        time.sleep(3)  # into the visit / the stream
+        assert p.poll() is None, err.read_text()[-600:]
+        assert any(d.name.startswith(".siphon-bf-") for d in out.iterdir())  # or the test proves nothing
+        p.send_signal(signal.SIGTERM)
+        assert p.wait(30) == 130
+    assert not any(d.name.startswith(".siphon-bf-") for d in out.iterdir()), list(out.iterdir())
+
+
 def test_browser_fetch_vets_every_redirect_hop(site, tmp_path, monkeypatch):
     # Pretend "localhost" is a public host, so 127.0.0.1 is more local than the page. A redirect
     # there must be stopped before Chrome sends it, not after the reply is in hand.
