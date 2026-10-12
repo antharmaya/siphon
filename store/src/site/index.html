@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A study in blue · Field Notes</title>
+<!-- A made-up publication on a reserved .example domain: the stage for the store screenshots. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Hanken+Grotesk:wght@400;500;600&display=block" rel="stylesheet">
+<style>
+  :root { --paper:#f9f7f4; --ink:#241c17; --muted:#6f655d; --line:#e4ddd4; --blue:#1256b2; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--paper); color: var(--ink); }
+  body { font: 400 16px/1.6 "Hanken Grotesk", system-ui, sans-serif; }
+  .mast { display: flex; align-items: baseline; gap: 28px; padding: 18px 48px; border-bottom: 1px solid var(--line); }
+  .mast b { font: 700 21px/1 "Bricolage Grotesque", sans-serif; letter-spacing: -0.02em; }
+  .mast nav { display: flex; gap: 20px; font-size: 14px; color: var(--muted); }
+  .mast nav span:first-child { color: var(--ink); font-weight: 600; }
+  .mast .sub { margin-left: auto; font-size: 13px; color: var(--muted); }
+  main { display: grid; grid-template-columns: 280px 1fr; gap: 40px; padding: 34px 48px 48px; }
+  .eyebrow { font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--blue); }
+  h1 { font: 700 44px/1.02 "Bricolage Grotesque", sans-serif; letter-spacing: -0.03em; margin: 10px 0 14px; }
+  .dek { font-size: 16.5px; color: #4a413a; margin: 0 0 18px; }
+  .by { font-size: 13px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 12px; }
+  figure { margin: 0; }
+  video { display: block; width: 100%; aspect-ratio: 16 / 9; border-radius: 6px; background: #0c172a; object-fit: cover; }
+  figcaption { font-size: 13px; color: var(--muted); margin-top: 10px; display: flex; justify-content: space-between; }
+  .body { grid-column: 2; max-width: 62ch; font-size: 16.5px; color: #3a312b; }
+</style>
+</head>
+<body>
+  <header class="mast">
+    <b>Field Notes</b>
+    <nav><span>Films</span><span>Essays</span><span>Archive</span></nav>
+    <span class="sub">Issue 14 · Autumn</span>
+  </header>
+  <main>
+    <div>
+      <div class="eyebrow">Film · 0:08</div>
+      <h1>A study in blue</h1>
+      <p class="dek">Eight seconds of a gradient turning over itself, shot at dusk and slowed until the colour has time to settle.</p>
+      <div class="by">By the editors · 4 min read</div>
+    </div>
+    <figure>
+      <video id="film" src="/media/study-in-blue.webm" poster="/media/poster.jpg" muted loop playsinline preload="auto"></video>
+      <figcaption><span>Study in blue, 2026.</span><span>1280 × 720</span></figcaption>
+    </figure>
+    <div class="body">
+      <p>Every frame here is generated rather than filmed: five colours, a spiral, and a little grain so the eye has something to hold.</p>
+    </div>
+  </main>
+  <script>
+    // What a streaming player does before it plays: fetch the HLS master and its first rendition.
+    // The extension's background worker sees these requests and lists them in its popup.
+    fetch("/media/hls/master.m3u8").then(() => fetch("/media/hls/720p.m3u8"));
+    fetch("/media/study-in-blue.mp4");
+  </script>
+</body>
+</html>

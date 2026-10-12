@@ -12,6 +12,22 @@
 
 const HOST = "com.antharmaya.siphon";
 
+// Distribution policy, set at build time (policy.js; scripts/build-extension.py). The GitHub build
+// blocks nothing; the Chrome Web Store build lists hosts it must not download from. Chrome loads it
+// here; Firefox lists policy.js before this file in background.scripts, so it's already defined.
+if (typeof self.SIPHON_POLICY === "undefined" && typeof importScripts === "function") {
+  try { importScripts("policy.js"); } catch {}
+}
+const POLICY = self.SIPHON_POLICY || { edition: "github", blockedHosts: [], blockedMessage: "" };
+
+// True when url's host is one of the blocked hosts or a subdomain of one.
+function isBlocked(url) {
+  if (!url || !POLICY.blockedHosts.length) return false;
+  let host;
+  try { host = new URL(url).hostname.toLowerCase(); } catch { return false; }
+  return POLICY.blockedHosts.some((b) => host === b || host.endsWith("." + b));
+}
+
 // Which browser are we in? The native host uses this to read THIS browser's login cookies,
 // without which X/Instagram image posts come back empty. UA tells Vivaldi/Edge/Opera apart;
 // Chrome vs Brave is ambiguous (Brave hides itself), so Brave is detected via navigator.brave.
@@ -71,6 +87,7 @@ function updateBadge(tabId) {
 chrome.webRequest.onResponseStarted.addListener(
   (d) => {
     if (d.tabId < 0 || AD_RE.test(d.url) || d.url.startsWith("blob:") || d.url.startsWith("data:")) return;
+    if (isBlocked(d.url) || isBlocked(d.initiator) || isBlocked(d.documentUrl)) return; // store build: not listed
     const ct = (d.responseHeaders || []).find((h) => h.name.toLowerCase() === "content-type")?.value;
     const kind = kindOf(d.url, (ct || "").split(";")[0].trim());
     if (!kind) return;
@@ -175,7 +192,7 @@ function siphonDownload(req, tabId, jobId) {
     // The host exits right after sending "done" — that disconnect is normal, not a failure.
     // Only a disconnect BEFORE any result means the host never ran (not installed / rejected).
     if (finished) return;
-    relay(tabId, jobId, { event: "error", message: (err?.message || "host disconnected") + " — native host not installed? run host/install.sh, then reload the extension" });
+    relay(tabId, jobId, { event: "error", message: (err?.message || "host disconnected") + " — " + (POLICY.hostHelp || "native host not installed? run host/install.sh, then reload the extension") });
   });
   detectBrowser().then((browser) => {
     port.postMessage({
@@ -244,7 +261,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
   if (msg.type === "domVideo") {
-    if (msg.url && !msg.url.startsWith("blob:")) {
+    if (msg.url && !msg.url.startsWith("blob:") && !isBlocked(msg.url) && !isBlocked(sender.tab?.url)) {
       const kind = kindOf(msg.url) || "file";
       remember(tabId, { url: msg.url, kind, title: msg.title, source: "dom" });
     }
@@ -265,6 +282,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   if (msg.type === "download") {
     const jobId = msg.jobId || Math.random().toString(36).slice(2);
+    // Store build: refuse blocked hosts here, the one place every download passes through
+    // (button, popup, box and native host alike). The button and popup show the message.
+    if ([msg.page, msg.url, msg.media, sender.tab?.url, sender.url].some(isBlocked)) {
+      sendResponse({ started: true, jobId, refused: true });
+      relay(tabId, jobId, { event: "error", message: POLICY.blockedMessage || "not available in this edition" });
+      return true;
+    }
     boxSettings().then((box) => {
       // Images stay instant and local. With a box, every video goes to the box (even a plain file:
       // that's the point of sending it there); without one, plain files the browser can save stay local.

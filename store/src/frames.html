@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>siphon store graphics</title>
+<!-- Rendered by capture.py at exact sizes; each [data-out] element becomes one PNG in store/.
+     The page and popup images inside are real captures of the extension (captures/*.png). -->
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=Hanken+Grotesk:wght@400;500;600&display=block" rel="stylesheet">
+<style>
+  :root {
+    --paper: #f9f7f4; --ink: #241c17; --muted: #6f655d; --line: #e4ddd4; --blue: #1256b2;
+    --blue-light: #6da5f8; --drench: #0c172a; --paper-on-dark: #eeece9; --muted-on-dark: #a9b4c7;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #ccc; display: flex; flex-direction: column; gap: 40px; padding: 40px 0; align-items: flex-start; }
+
+  /* ---- 1280 × 800 screenshots ------------------------------------------------------------ */
+  .shot { position: relative; width: 1280px; height: 800px; overflow: hidden; background: var(--paper); color: var(--ink);
+          font-family: "Hanken Grotesk", sans-serif; }
+  .shot .lock { position: absolute; left: 80px; top: 40px; height: 26px; }
+  .shot .step { position: absolute; right: 80px; top: 46px; font: 600 13px/1 "Hanken Grotesk", sans-serif;
+                letter-spacing: 0.08em; color: var(--blue); }
+  .shot h2 { position: absolute; left: 80px; top: 84px; margin: 0; font: 700 40px/1.05 "Bricolage Grotesque", sans-serif;
+             letter-spacing: -0.03em; max-width: 1000px; }
+  .shot p { position: absolute; left: 80px; top: 136px; margin: 0; font-size: 18px; line-height: 1.45; color: var(--muted); max-width: 920px; }
+  .win { position: absolute; left: 80px; top: 196px; width: 1120px; height: 640px; border-radius: 14px 14px 0 0;
+         background: var(--paper); border: 1px solid var(--line); overflow: hidden;
+         box-shadow: 0 1px 0 rgba(36,28,23,.04), 0 24px 70px -10px rgba(36,28,23,.22); }
+  .bar { height: 42px; display: flex; align-items: center; gap: 12px; padding: 0 14px; background: #efebe5; border-bottom: 1px solid var(--line); }
+  .dots { display: flex; gap: 7px; } .dots i { width: 11px; height: 11px; border-radius: 50%; background: #d8d1c8; }
+  .url { flex: 0 1 460px; margin-left: 10px; height: 26px; border-radius: 13px; background: #fbfaf8; border: 1px solid #e2dbd2;
+         font: 500 13px/24px "Hanken Grotesk", sans-serif; color: #5d544d; padding: 0 14px; }
+  .tool { margin-left: auto; position: relative; width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; }
+  .tool.on { background: #e2dcd4; }
+  .tool img { width: 18px; height: 18px; display: block; }
+  .tool b { position: absolute; right: -3px; bottom: -2px; min-width: 15px; height: 14px; padding: 0 3px; border-radius: 7px;
+            background: #1f6feb; color: #fff; font: 700 9.5px/14px system-ui, sans-serif; text-align: center; }
+  .page { display: block; width: 1120px; height: 620px; }
+  .popup { position: absolute; right: 12px; top: 48px; width: 340px; border-radius: 10px; overflow: hidden;
+           box-shadow: 0 0 0 1px rgba(12,23,42,.25), 0 18px 50px -6px rgba(12,23,42,.45); }
+  .popup img { display: block; width: 340px; }
+
+  /* ---- promo tiles ------------------------------------------------------------------------- */
+  .tile { position: relative; overflow: hidden; background: var(--drench); color: var(--paper-on-dark); font-family: "Hanken Grotesk", sans-serif; }
+  .tile .swirl { position: absolute; opacity: .55; }
+  .tile .glow { position: absolute; border-radius: 50%; background: radial-gradient(closest-side, rgba(18,86,178,.55), rgba(18,86,178,0)); }
+  .chip { display: inline-flex; align-items: center; gap: 7px; padding: 8px 13px; border-radius: 9px; background: rgba(20,22,28,.82);
+          border: 1px solid rgba(255,255,255,.18); color: #fff; font: 600 13px/1 system-ui, -apple-system, "Segoe UI", sans-serif;
+          box-shadow: 0 2px 10px rgba(0,0,0,.35); }
+  .chip img { width: 17px; height: 17px; }
+
+  .small { width: 440px; height: 280px; }
+  .small .swirl { width: 420px; right: -150px; bottom: -150px; }
+  .small .glow { width: 420px; height: 420px; right: -170px; bottom: -190px; }
+  .small .lock { position: absolute; left: 40px; top: 92px; height: 54px; }
+  .small .chip { position: absolute; left: 44px; top: 170px; }
+
+  .marquee { width: 1400px; height: 560px; }
+  .marquee .glow { width: 900px; height: 900px; right: -260px; top: -260px; }
+  .marquee .lock { position: absolute; left: 96px; top: 96px; height: 52px; }
+  .marquee h1 { position: absolute; left: 96px; top: 190px; margin: 0; width: 520px; font: 700 54px/1.02 "Bricolage Grotesque", sans-serif; letter-spacing: -0.03em; }
+  .marquee p { position: absolute; left: 96px; top: 324px; margin: 0; width: 470px; font-size: 19px; line-height: 1.5; color: var(--muted-on-dark); }
+  /* Cropped to the video column so the button (top-right of the video) stays in frame. */
+  .marquee .card { position: absolute; left: 650px; top: 84px; width: 820px; height: 560px; border-radius: 14px; overflow: hidden;
+                   box-shadow: 0 0 0 1px rgba(255,255,255,.08), 0 40px 90px -10px rgba(0,0,0,.6); }
+  .marquee .card img { display: block; width: 1331px; margin: -83px 0 0 -512px; } /* page x 430..1120, y 70.. at 1.19x */
+</style>
+</head>
+<body>
+
+<section class="shot" data-out="screenshot-1-button.png">
+  <img class="lock" src="../../assets/lockup-light.svg" alt="">
+  <span class="step">01 / 04</span>
+  <h2>A download button on the video you're watching.</h2>
+  <p>Hover a video and siphon waits in its corner. Plain files save straight through your browser.</p>
+  <div class="win">
+    <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span class="url">field-notes.example</span>
+      <span class="tool"><img src="../../extension/icons/16.png" alt=""><b>4</b></span></div>
+    <img class="page" src="captures/page-hover.png" alt="">
+  </div>
+</section>
+
+<section class="shot" data-out="screenshot-2-progress.png">
+  <img class="lock" src="../../assets/lockup-light.svg" alt="">
+  <span class="step">02 / 04</span>
+  <h2>Progress lives on the button.</h2>
+  <p>The mark swallows while it downloads. When the file lands, one click copies its path.</p>
+  <div class="win">
+    <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span class="url">field-notes.example</span>
+      <span class="tool"><img src="../../extension/icons/16.png" alt=""><b>4</b></span></div>
+    <img class="page" src="captures/page-progress.png" alt="">
+  </div>
+</section>
+
+<section class="shot" data-out="screenshot-3-streams.png">
+  <img class="lock" src="../../assets/lockup-light.svg" alt="">
+  <span class="step">03 / 04</span>
+  <h2>Every stream the player fetched.</h2>
+  <p>HLS and DASH manifests and plain files, listed in the toolbar. Streams go to the free siphon app on your computer.</p>
+  <div class="win">
+    <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span class="url">field-notes.example</span>
+      <span class="tool on"><img src="../../extension/icons/16.png" alt=""><b>4</b></span></div>
+    <img class="page" src="captures/page-saved.png" alt="">
+    <div class="popup"><img src="captures/popup-streams.png" alt=""></div>
+  </div>
+</section>
+
+<section class="shot" data-out="screenshot-4-box.png">
+  <img class="lock" src="../../assets/lockup-light.svg" alt="">
+  <span class="step">04 / 04</span>
+  <h2>Or send it to your own siphon server.</h2>
+  <p>Point it at siphon serve on a home machine or a small server you run. Images still save here instantly.</p>
+  <div class="win">
+    <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span class="url">field-notes.example</span>
+      <span class="tool on"><img src="../../extension/icons/16.png" alt=""><b>4</b></span></div>
+    <img class="page" src="captures/page-saved.png" alt="">
+    <div class="popup"><img src="captures/popup-box.png" alt=""></div>
+  </div>
+</section>
+
+<section class="tile small" data-out="promo-small-440x280.png">
+  <div class="glow"></div>
+  <img class="swirl" src="../../extension/states/idle.svg" alt="">
+  <img class="lock" src="../../assets/lockup-dark.svg" alt="">
+  <span class="chip"><img src="../../extension/states/idle.svg" alt="">Download</span>
+</section>
+
+<section class="tile marquee" data-out="promo-marquee-1400x560.png">
+  <div class="glow"></div>
+  <img class="lock" src="../../assets/lockup-dark.svg" alt="">
+  <h1>One sink for any download.</h1>
+  <p>A button on the video you're watching. Saved to your computer, or to your own server. No account, no telemetry.</p>
+  <div class="card"><img src="captures/page-progress.png" alt=""></div>
+</section>
+
+</body>
+</html>
