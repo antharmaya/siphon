@@ -64,15 +64,41 @@ def _apply_auth(cookies_browser: str | None, cookies_file: str | None, proxy: st
         config.set(("extractor",), "proxy", proxy)
 
 
-def supported(url: str) -> str | None:
+_MODULES: list[str] | None = None
+
+
+def site_modules(site: str) -> list[str] | None:
+    """gallery-dl modules named for a site yt-dlp has a dedicated extractor for ('TwitterBroadcast'
+    → ['twitter']); [] means gallery-dl has nothing for that site. None: can't tell, check fully.
+
+    Why: a full extractor.find() on a URL nothing matches imports all ~290 modules (~1s of CPU, on
+    every YouTube link). The two projects name sites alike; over yt-dlp's 5,709 test URLs, every one
+    gallery-dl also claims is claimed by a module this returns. Names are read from the package
+    directory, because importing gallery-dl just to read its module list costs ~0.5s itself."""
+    global _MODULES
+    if _MODULES is None:
+        import importlib.util
+
+        spec = importlib.util.find_spec("gallery_dl")  # locates, doesn't import
+        d = Path(spec.submodule_search_locations[0]) / "extractor" if spec and spec.submodule_search_locations else None
+        _MODULES = sorted(p.stem for p in d.glob("*.py") if not p.stem.startswith("_")) if d and d.is_dir() else []
+    if not _MODULES or site in ("KnownDRM", "KnownPiracy", "KnownLiability"):
+        return None  # yt-dlp's refusal lists span unrelated hosts (gofile, motherless): no site name to match
+    key = site.lower()
+    return [m for m in _MODULES if key.startswith(m)]
+
+
+def supported(url: str, site: str | None = None) -> str | None:
     """gallery-dl's subcategory for this URL (e.g. 'tweet', 'user'), or None if only the
-    generic/direct-link extractor matches — meaning no real extractor, leave it to the chain."""
-    if not available():
+    generic/direct-link extractor matches — meaning no real extractor, leave it to the chain.
+    `site` (yt-dlp's dedicated extractor for the URL) narrows the search to that site's modules."""
+    mods = site_modules(site) if site else None
+    if mods == [] or not available():
         return None
     from gallery_dl import extractor
 
     try:
-        ie = extractor.find(url)
+        ie = extractor.find(url) if mods is None else _find_in(url, mods)
     except Exception:
         return None
     if ie is None or ie.category in ("", "directlink", "generic", "recursive", "oauth"):
@@ -80,10 +106,30 @@ def supported(url: str) -> str | None:
     return ie.subcategory or ie.category
 
 
+def _find_in(url: str, mods: list[str]):
+    """extractor.find() over just these modules, in gallery-dl's own order. Patterns are compiled
+    locally: gallery-dl's add_module() decides whether a module is compiled from its first class
+    alone, so compiling some classes in place would leave the rest as strings for it."""
+    import importlib
+    import re
+
+    from gallery_dl import extractor
+
+    order = {m: i for i, m in enumerate(extractor.modules)}
+    for name in sorted((m for m in mods if m in order), key=order.__getitem__):
+        mod = importlib.import_module(f"gallery_dl.extractor.{name}")
+        for cls in vars(mod).values():
+            if hasattr(cls, "pattern") and getattr(cls, "__module__", None) == mod.__name__:
+                pat = re.compile(cls.pattern) if isinstance(cls.pattern, str) else cls.pattern
+                if m := pat.match(url):
+                    return cls(m)
+    return None
+
+
 def probe(url: str, cookies_browser: str | None = None, cookies_file: str | None = None,
-          proxy: str | None = None, cap: int = 80) -> Candidate | None:
+          proxy: str | None = None, cap: int = 80, site: str | None = None) -> Candidate | None:
     """Simulate the extraction: list up to `cap` media items without downloading."""
-    sub = supported(url)
+    sub = supported(url, site)
     if sub is None:
         return None
     from gallery_dl import config, job

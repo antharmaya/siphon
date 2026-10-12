@@ -199,6 +199,80 @@ def test_gallery_bulk_subcategories_cover_timelines():
     assert gallery.supported("https://x.com/NASA/media") in gallery.BULK_SUBCATEGORIES
 
 
+@pytest.mark.parametrize("url", [
+    "https://x.com/NASA/status/123", "https://www.instagram.com/p/abc/", "https://www.instagram.com/nasa/",
+    "https://www.reddit.com/r/pics/comments/abc/x/", "https://imgur.com/a/abcde", "https://bsky.app/profile/a.b/post/xyz",
+    "https://www.tiktok.com/@user/video/123", "https://www.flickr.com/photos/user/12345", "https://gofile.io/d/abc",
+    "https://www.youtube.com/watch?v=aqz-KE-bpKQ", "https://vimeo.com/76979871",
+])
+def test_gallery_check_narrowed_to_the_site_gives_the_same_answer(url):
+    """resolve() narrows gallery-dl's check to modules named like yt-dlp's extractor (a full scan
+    imports all of gallery-dl: ~1s on every YouTube link). Same answer as the full check, or a
+    gallery-dl/yt-dlp update broke the naming assumption."""
+    from siphon.resolve import gallery
+    from siphon.ytdlp import dedicated_extractor
+
+    site = dedicated_extractor(url)
+    assert site is not None
+    assert gallery.supported(url, site) == gallery.supported(url)
+
+
+def test_gallery_check_on_a_video_site_never_loads_gallery_dl():
+    import subprocess
+    import sys
+
+    code = ("import sys; from siphon.resolve import gallery; "
+            "print(gallery.supported('https://www.youtube.com/watch?v=x', 'Youtube'), gallery.site_modules('Youtube'), "
+            "gallery.site_modules('TwitterBroadcast'), 'gallery_dl.extractor' in sys.modules)")
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=60)
+    assert out.stdout.split() == ["None", "[]", "['twitter']", "False"], out.stderr[-500:]
+
+
+def test_resolve_goes_straight_to_ytdlp_on_known_video_sites(monkeypatch):
+    """No direct GET of a YouTube page (0.4-2.5s) and no gallery-dl scan; pasted media files and
+    image posts keep their resolvers."""
+    from siphon import resolve as R
+    from siphon.models import Candidate
+    from siphon.resolve import direct, gallery
+    from siphon.resolve.sniff import SniffOptions
+
+    calls = []
+
+    def fake_direct(url, **kw):
+        calls.append("direct")
+        return Candidate(url=url, kind="file", source="direct", page_url=url) if url.endswith(".mp4") else None
+
+    def fake_gallery(url, *a, **kw):
+        calls.append("gallery")
+        n = 2 if "/status/" in url else 1
+        return Candidate(url=url, kind="gallery", source="gallery", page_url=url, note="post",
+                         info={"count": n, "videos": 1})  # a status: 1 image + 1 video; else video-only
+
+    class Ydl:
+        class cfg:
+            cookies_from_browser = cookies_file = None
+
+        def probe(self, url):
+            calls.append("ytdlp")
+            return Candidate(url=url, kind="site", source="ytdlp", page_url=url, note="site")
+
+    monkeypatch.setattr(direct, "probe", fake_direct)
+    monkeypatch.setattr(gallery, "probe", fake_gallery)
+    from gallery_dl import extractor
+    monkeypatch.setattr(extractor, "find", lambda url: calls.append("gallery-dl full scan"))
+
+    def run(url):
+        calls.clear()
+        res = R.resolve(url, "auto", Ydl(), SniffOptions())
+        return list(calls), res.best.source
+
+    assert run("https://www.youtube.com/watch?v=aqz-KE-bpKQ") == (["ytdlp"], "ytdlp")
+    assert run("https://x.com/NASA/status/123") == (["gallery"], "gallery")  # has images: gallery-dl
+    assert run("https://x.com/i/broadcasts/1abc") == (["ytdlp"], "ytdlp")  # no gallery-dl extractor
+    assert run("https://www.reddit.com/r/videos/comments/abc/x/") == (["gallery", "ytdlp"], "ytdlp")  # video-only
+    assert run("https://cdn.example.org/clip.mp4") == (["direct"], "direct")  # a media URL: one GET, done
+
+
 def test_parse_section_and_feature_params():
     from siphon.ytdlp import YtdlpConfig, YtdlpEngine, _parse_section
 
