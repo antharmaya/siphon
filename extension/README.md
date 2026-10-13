@@ -17,13 +17,15 @@ This is the same mechanism Video DownloadHelper's "CoApp" used.
 
 ## Install (one time)
 
-1. **Install the native host** — from this folder:
+1. **Install the native host.** With siphon installed, from anywhere:
    ```bash
-   ./host/install.sh
+   siphon setup browser
    ```
-   It writes a manifest into every installed browser's `NativeMessagingHosts` dir, pointing
-   at `host/siphon_host.py` and locked to this extension's ID
-   (`pbeimeldfnbenghllloohnnofbfaicfe`). Re-run it if you move the repo.
+   It writes a manifest into every installed browser's `NativeMessagingHosts` dir, locked to
+   this extension's two IDs: `pbeimeldfnbenghllloohnnofbfaicfe` (this folder, the GitHub zip)
+   and `dkicnkfpoodpflagdafjoobaoclfndlp` (the Chrome Web Store build). `--remove` undoes it.
+   Working on the host itself? `./host/install.sh` from this folder points the browsers at
+   `host/siphon_host.py` in the checkout instead; re-run it if you move the repo.
 
 2. **Load the extension** — in `vivaldi://extensions` (or `chrome://extensions`):
    enable **Developer mode**, click **Load unpacked**, and pick this `extension/` folder.

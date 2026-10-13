@@ -51,5 +51,9 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/siphon"]
 
+# The browser's native host, so `siphon setup browser` works without the repo (one source file).
+[tool.hatch.build.targets.wheel.force-include]
+"extension/host/siphon_host.py" = "siphon/browserhost.py"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

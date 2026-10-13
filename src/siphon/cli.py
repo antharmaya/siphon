@@ -7,6 +7,7 @@
     siphon queue add URL...          add to the download queue (then: queue run -N 3)
     siphon doctor                    what works on this machine, and the fix for what doesn't
     siphon setup                     fetch missing tools (ffmpeg, deno, rclone, cloudflared), no sudo
+    siphon setup browser             connect the browser extension to this siphon
     siphon serve                     your private download box, reachable from your phone
     siphon cloud add gdrive          send downloads to your own cloud (then: --to gdrive:siphon)
 """

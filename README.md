@@ -136,7 +136,14 @@ The provenance record keeps the SHA-256 of what was uploaded and where it went.
 Chromium browser (Chrome, Vivaldi, Brave, Edge). Images and plain files download instantly
 through the browser; streams go to the CLI through a native-messaging bridge, with live progress
 on the button and a copy-path icon when the file lands. Multi-image posts offer *this one*,
-*all*, or *cancel*. Setup is in [extension/README.md](extension/README.md).
+*all*, or *cancel*.
+
+```bash
+siphon setup browser    # once: lets the extension hand streams to this siphon
+```
+
+Then reload the extension. That works for the Chrome Web Store build and the GitHub zip alike;
+loading the extension from source is in [extension/README.md](extension/README.md).
 
 ## How it resolves a link
 

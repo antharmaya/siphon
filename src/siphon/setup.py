@@ -4,6 +4,7 @@
     siphon setup                  fetch whatever the everyday path is missing (ffmpeg, a JS runtime)
     siphon setup --all            + the optional tools: rclone (cloud), cloudflared (share link)
     siphon setup rclone ...       just those
+    siphon setup browser          connect the browser button (native-messaging host)
     siphon setup -y               don't ask
 
 The capability list is data (`capabilities()`), so doctor, setup and `siphon serve`'s status
@@ -92,6 +93,13 @@ def capabilities() -> list[Cap]:
     caps.append(Cap("remote", "reach siphon serve from anywhere", True if have else None,
                     " · ".join(have) + " available" if have else "optional: private (tailscale) or shareable (cloudflared) access",
                     "" if have else f"siphon setup cloudflared   or   {TAILSCALE_HINT}"))
+
+    from . import browser
+    hooked = browser.installed()
+    caps.append(Cap("browser", "browser button (streams)", True if hooked else None,
+                    f"native host registered with {len(hooked)} browser(s)" if hooked
+                    else "optional: the extension can't hand streams to siphon yet",
+                    "" if hooked else "siphon setup browser"))
     return caps
 
 
@@ -137,10 +145,14 @@ def plan(names: list[str], everything: bool) -> list[str]:
 
 
 def setup_main(argv: list[str]) -> int:
+    if argv[:1] == ["browser"]:
+        from . import browser
+        return browser.main(argv[1:])
     paths.use_managed_bin()
     p = argparse.ArgumentParser(prog="siphon setup", description="Fetch the tools siphon needs, into its own bin dir (no sudo).")
     p.add_argument("tools", nargs="*", metavar="TOOL",
-                   help=f"one or more of: {', '.join(tools.FETCHABLE)} (default: whatever is missing)")
+                   help=f"one or more of: {', '.join(tools.FETCHABLE)} (default: whatever is missing); "
+                        "or `browser` to connect the browser button")
     p.add_argument("--all", action="store_true", help="also the optional tools (rclone, cloudflared)")
     p.add_argument("-y", "--yes", action="store_true", help="don't ask")
     a = p.parse_args(argv)

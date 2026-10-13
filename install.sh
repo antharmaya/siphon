@@ -57,3 +57,4 @@ esac
 say "✓ siphon $("$SIPHON" --version | cut -d' ' -f2) installed"
 echo "  try:   siphon 'https://www.youtube.com/watch?v=jNQXAC9IVRw'"
 echo "  check: siphon doctor"
+echo "  using the browser extension? run: siphon setup browser"
