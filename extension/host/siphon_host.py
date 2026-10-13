@@ -21,7 +21,7 @@ import sys
 import threading
 from pathlib import Path
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 LOG = Path(os.environ.get("SIPHON_HOST_LOG", Path.home() / ".local/share/siphon/host.log"))
 
@@ -80,6 +80,26 @@ def default_outdir() -> Path:
     return d if d.exists() else Path.home()
 
 
+# Zen, LibreWolf, Floorp and Waterfox say "Firefox" in their user agent but keep profiles elsewhere.
+FIREFOX_FORKS = {"zen": "~/.zen", "librewolf": "~/.librewolf", "floorp": "~/.floorp", "waterfox": "~/.waterfox"}
+
+
+def cookie_source(browser: str, parent_exe: str | None = None) -> str:
+    """What to read the login cookies from. For "firefox", look at which browser started this host
+    (its parent process) so a fork's own profiles are read, not Firefox's."""
+    if browser != "firefox":
+        return browser
+    if parent_exe is None:
+        try:
+            parent_exe = os.readlink(f"/proc/{os.getppid()}/exe")
+        except OSError:
+            return browser
+    for name, root in FIREFOX_FORKS.items():
+        if name in parent_exe.lower() and Path(root).expanduser().is_dir():
+            return f"firefox:{Path(root).expanduser()}"
+    return browser
+
+
 PCT = re.compile(r"(\d{1,3}(?:\.\d+)?)%")
 SPEED = re.compile(r"at\s+([\d.]+\s*[KMG]i?B/s)")
 SAVED = re.compile(r"(?:✓|Destination:|\[download\] )\s*(/.+?\.(?:mp4|mkv|webm|m4v|mov|m4a|mp3|aac|opus|jpg|jpeg|png|gif|webp|avif))(?:\s|$)")
@@ -103,7 +123,7 @@ def run_download(req: dict) -> None:
     # The extension sends which browser it is; SIPHON_COOKIES_BROWSER overrides, "none" disables.
     cookies = os.environ.get("SIPHON_COOKIES_BROWSER") or req.get("browser")
     if cookies and cookies.lower() not in ("none", "off", ""):
-        cmd += ["--cookies-from-browser", cookies]
+        cmd += ["--cookies-from-browser", cookie_source(cookies.lower()), "--cookies-optional"]
     # A direct media URL from the page may 403 without the page context; pass the page too
     # by preferring it when the click was the page-level button (media is None).
     env = dict(os.environ)

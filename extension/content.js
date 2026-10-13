@@ -319,14 +319,21 @@
   // any working state stacks above it. Only swap the art on a state change, so a progress tick
   // never restarts the animation.
   function art(name) {
-    try { return '<img class="siphon-state" alt="" src="' + chrome.runtime.getURL("states/" + name + ".svg") + '">'; }
-    catch { return ""; } // extension reloaded: no art, the label still works
+    try {
+      const img = document.createElement("img");
+      img.className = "siphon-state";
+      img.alt = "";
+      img.src = chrome.runtime.getURL("states/" + name + ".svg");
+      return img;
+    } catch { return ""; } // extension reloaded: no art, the label still works
   }
 
   function setState(btn, name, text) {
     if (btn.dataset.state !== name) {
       btn.dataset.state = name;
-      btn.innerHTML = art(name) + '<span class="siphon-dl-label"></span>';
+      const label = document.createElement("span");
+      label.className = "siphon-dl-label";
+      btn.replaceChildren(art(name), label);
       btn.classList.toggle("siphon-stack", name !== "idle");
     }
     btn.querySelector(".siphon-dl-label").textContent = text;

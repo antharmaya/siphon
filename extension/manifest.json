@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "siphon",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "A siphon button beside every video and image: download it here, or send it to your siphon box.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA7fWurT2bdG31YsQLL4iDz7VHMlc9VbLYqiV4a7rngmRZXu2RI53MPOaC7zW4wod6JWOOqcqtPSz6xUoIcxniIx62jFtcLib2VQp3LaBsBtM8O+iSl/PiZKSM8arCDRPDej9C3GZGppiwfRSCiiNOoRFCgc7/bbKmi5mv3x2QqNYJtMZVfLKD0FhcvzFljMkYkdXL/634lqC8WHxKx69zLHsZMg4utTg8HopyDng1FfMMF3EUG9+VpQ51Pw0JAvDgByZd2Q+z/R/bWPkxulvyJFCvB/Xe3CO79mTUjxZ/8YK4deJNOYWOCcESg7hxkPqberaCsBZIpLi9G6oYwJfDeQIDAQAB",
   "minimum_chrome_version": "116",

@@ -33,6 +33,7 @@ function isBlocked(url) {
 // Chrome vs Brave is ambiguous (Brave hides itself), so Brave is detected via navigator.brave.
 async function detectBrowser() {
   const ua = navigator.userAgent;
+  if (/Firefox\//.test(ua)) return "firefox"; // Zen, LibreWolf and Floorp say Firefox too; the host tells them apart
   if (/Vivaldi/.test(ua)) return "vivaldi";
   if (/Edg\//.test(ua)) return "edge";
   if (/OPR\//.test(ua)) return "opera";
@@ -192,7 +193,7 @@ function siphonDownload(req, tabId, jobId) {
     // The host exits right after sending "done" — that disconnect is normal, not a failure.
     // Only a disconnect BEFORE any result means the host never ran (not installed / rejected).
     if (finished) return;
-    relay(tabId, jobId, { event: "error", message: (err?.message || "host disconnected") + " — " + (POLICY.hostHelp || "native host not installed? run host/install.sh, then reload the extension") });
+    relay(tabId, jobId, { event: "error", message: (err?.message || "host disconnected") + " — " + (POLICY.hostHelp || "siphon app not connected? run: siphon setup browser, then reload the extension") });
   });
   detectBrowser().then((browser) => {
     port.postMessage({

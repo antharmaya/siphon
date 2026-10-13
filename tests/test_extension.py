@@ -49,3 +49,48 @@ def test_host_reads_saved_files_from_provenance(tmp_path):
     assert got == [str(tmp_path / "a [emoji \U0001f577️].mkv"), str(tmp_path / "b.jpg")]
     assert host.read_saved(prov, prov.stat().st_size, tmp_path) == []  # nothing new
     assert host.read_saved(tmp_path / "nope.jsonl", 0, tmp_path) == []
+
+
+def test_host_reads_a_firefox_forks_own_profiles(tmp_path, monkeypatch):
+    host = _load_host()
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / ".zen").mkdir()
+    assert host.cookie_source("firefox", "/app/zen/zen") == f"firefox:{tmp_path}/.zen"
+    assert host.cookie_source("firefox", "/usr/lib64/firefox/firefox") == "firefox"
+    assert host.cookie_source("firefox", "/usr/bin/librewolf") == "firefox"  # no ~/.librewolf here
+    assert host.cookie_source("brave", "/app/zen/zen") == "brave"
+
+
+def _load_build():
+    import importlib.util
+    from pathlib import Path
+
+    p = Path(__file__).resolve().parents[1] / "scripts" / "build-extension.py"
+    spec = importlib.util.spec_from_file_location("build_extension", p)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_firefox_build_is_an_event_page_with_an_addon_id_and_no_chrome_keys():
+    import json
+
+    b = _load_build()
+    src = json.loads((b.SRC / "manifest.json").read_text())
+    m = b.firefox_manifest(src)
+    assert m["background"] == {"scripts": ["policy.js", "background.js"]}  # policy first: no importScripts there
+    gecko = m["browser_specific_settings"]["gecko"]
+    assert gecko["id"] == "siphon@antharmaya.com" and gecko["data_collection_permissions"]["required"]
+    assert "key" not in m and "minimum_chrome_version" not in m
+    assert not any(cs.get("exclude_matches") for cs in m["content_scripts"])  # full edition: nothing excluded
+    assert '"blockedHosts": []' in b.firefox_policy()
+    assert "key" in src and "service_worker" in src["background"]  # the source manifest is untouched
+
+
+def test_store_build_still_keeps_youtube_out():
+    import json
+
+    b = _load_build()
+    m = b.store_manifest(json.loads((b.SRC / "manifest.json").read_text()))
+    assert all("*://*.youtube.com/*" in cs["exclude_matches"] for cs in m["content_scripts"])
+    assert "youtube.com" in b.store_policy()

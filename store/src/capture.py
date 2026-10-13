@@ -331,7 +331,7 @@ async def store_run(ext, work, ports, box_token):
             setTimeout(() => res(got), 4000);
         })""")
         check("store build refuses a YouTube download with the store message",
-              (refusal.get("resp") or {}).get("refused") and "Chrome Web Store edition" in (refusal.get("relay") or ""),
+              (refusal.get("resp") or {}).get("refused") and "YouTube in this edition" in (refusal.get("relay") or ""),
               str(refusal))
 
         # youtube.com itself: the content script must not be there.

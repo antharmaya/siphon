@@ -92,10 +92,10 @@ function setSaved(file) {
   copy.className = "copy-btn";
   copy.title = "copy path";
   copy.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+  const icon = copy.firstElementChild;
   copy.addEventListener("click", () => {
-    navigator.clipboard.writeText(file || "").then(() => { copy.textContent = "✓"; setTimeout(() => (copy.innerHTML = copy.dataset.svg), 1200); }, () => {});
+    navigator.clipboard.writeText(file || "").then(() => { copy.textContent = "✓"; setTimeout(() => copy.replaceChildren(icon), 1200); }, () => {});
   });
-  copy.dataset.svg = copy.innerHTML;
   s.append(txt, copy);
 }
 
@@ -121,6 +121,19 @@ async function init() {
 
   chrome.runtime.sendMessage({ type: "list", tabId }, (res) => render(res?.items || []));
   initTarget();
+  initAccess();
+}
+
+// Firefox lets the user withhold or revoke site access (it's optional there); say so and offer the fix.
+async function initAccess() {
+  const all = { origins: ["<all_urls>"] };
+  try {
+    if (await chrome.permissions.contains(all)) return;
+  } catch { return; }
+  $("grant").style.display = "block";
+  $("grantBtn").addEventListener("click", () => {
+    chrome.permissions.request(all).then((ok) => { if (ok) $("grant").style.display = "none"; }, () => {});
+  });
 }
 
 // Where downloads go: this computer (the native host) or your siphon box (siphon serve).

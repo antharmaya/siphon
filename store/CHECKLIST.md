@@ -151,29 +151,44 @@ No account or login is needed.
 
 ## Firefox (addons.mozilla.org)
 
-**Does the same zip work?** No. Firefox needs a third edition from the same build script. That
-is roughly 30 lines in `scripts/build-extension.py`, which isn't written yet. The changes it needs:
+**Built and verified 2026-10-13.** `python3 scripts/build-extension.py` writes
+`dist/siphon-extension-<version>-firefox.zip`: the full edition (nothing excluded; Mozilla's add-on
+policies have no YouTube or download rule). `web-ext lint` reports 0 errors and one warning (no
+Firefox-for-Android support declared, which is intended). `store/src/firefox_check.py` runs it in a
+real Firefox and passes 12 of 12: install, site access granted at install, the button, the stream
+list, the native host, a browser download, an HLS download through the host, and the localhost
+route for sandboxed browsers.
+
+What the Firefox manifest changes, and why:
 
 | change | why |
 |---|---|
-| `browser_specific_settings.gecko.id`, e.g. `"siphon@antharmaya.com"` | required for MV3 add-ons and for native messaging (the host allowlists add-on IDs) |
-| `background: {"scripts": ["policy.js", "background.js"]}` instead of `service_worker` | Firefox MV3 runs background scripts as an event page, not a service worker. `background.js` already skips `importScripts` when `policy.js` is preloaded, so it needs no code change |
-| `browser_specific_settings.gecko.data_collection_permissions` | required for **new** AMO extensions since 2025-11-03 (Mozilla's built-in data consent). Declare `"required": ["browsingActivity"]`, because page and stream URLs go to the local app or the user's server. Whether the box token also counts as `authenticationInfo` is a judgment call to check against Mozilla's definitions |
-| `strict_min_version: "140.0"` | the built-in data-consent UI ships in Firefox 140 |
-| drop `key` and `minimum_chrome_version` | Chrome-only keys (Firefox warns on them) |
-| content `exclude_matches` and store `policy.js` | if you want the same YouTube exclusion there. AMO's add-on policies (read 2026-10-12) have no YouTube or download-specific rule, so this is a founder decision, not a requirement |
+| `browser_specific_settings.gecko.id` = `siphon@antharmaya.com` | the native host allows add-on IDs, so the ID must be fixed |
+| `background.scripts` = `["policy.js", "background.js"]` | Firefox MV3 runs an event page, not a service worker, and an event page has no `importScripts` |
+| `data_collection_permissions.required` = `authenticationInfo`, `browsingActivity`, `websiteContent` | required for new AMO add-ons since 2025-11-03. Page and stream URLs, media links and the user's own box token leave the browser (to the local app, or to the server the user names). Same three as the Chrome listing |
+| `strict_min_version` = `140.0` | the built-in data-consent prompt ships in 140 |
+| no `key`, no `minimum_chrome_version` | Chrome-only |
 
-Code changes Firefox would need:
-- `detectBrowser()` returns `"chrome"` on Firefox. Add `if (/Firefox\//.test(ua)) return "firefox";`,
-  or the app reads the wrong browser's cookies.
-- `chrome.*` with promises works in Firefox MV3. `webRequest.onResponseStarted` with
-  `responseHeaders`, `downloads` and `storage.session` (Firefox 115+) are supported.
-- Firefox treats MV3 host permissions as user-grantable. Check that `<all_urls>` is granted at
-  install on 140, or the button won't appear until the user allows it.
+Native host: `siphon setup browser` writes `~/.mozilla/native-messaging-hosts/` (also for a Firefox
+whose profile is under `~/.config/mozilla`: a real Firefox 157 did not read the XDG dir), plus
+`~/.zen`, `~/.librewolf`, `~/.floorp`, `~/.waterfox` when they exist, keyed by the add-on ID.
 
-Native host on Firefox:
-- Different manifest key: `"allowed_extensions": ["siphon@antharmaya.com"]`, not `allowed_origins`.
-- Location: Linux `~/.mozilla/native-messaging-hosts/com.antharmaya.siphon.json`. macOS
-  `~/Library/Application Support/Mozilla/NativeMessagingHosts/`. Windows registry
-  `HKCU\Software\Mozilla\NativeMessagingHosts\com.antharmaya.siphon`.
-- `host/install.sh` would need a Firefox branch that writes that file.
+**Flatpak and Snap browsers can't start a native host** (no WebExtensions portal on a stock
+desktop). There the user runs `siphon serve` on the same computer and picks "my siphon box" with
+`http://127.0.0.1:8765` and the token from `siphon serve token`. The popup and
+`siphon setup browser` both say so. Gap: that route doesn't carry the browser's logins yet.
+
+### Submitting (needs a Firefox account; free, no fee)
+
+- [ ] https://addons.mozilla.org/developers/ → sign in → **Submit a New Add-on** → **On this site**.
+- [ ] Upload `dist/siphon-extension-<version>-firefox.zip`. Compatibility: Firefox (desktop) only.
+- [ ] "Do you need to submit source code?" **No**: nothing is minified or generated except
+      `manifest.json` and `policy.js`, which `scripts/build-extension.py` writes (say so in the notes).
+- [ ] Name, summary, description, categories, licence, privacy policy, notes for reviewers: paste
+      from `store/amo.md`.
+- [ ] Screenshots: the same four PNGs in `store/`.
+- [ ] Submit. Listed add-ons are checked automatically first; a human review can follow later.
+
+To install in your own Firefox or Zen before it is listed: `about:debugging` → This Firefox →
+**Load Temporary Add-on** → pick `dist/extension-firefox/manifest.json` (it stays until the browser
+restarts). A permanent install needs Mozilla's signature, which the AMO submission gives.

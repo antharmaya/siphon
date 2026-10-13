@@ -133,7 +133,7 @@ The provenance record keeps the SHA-256 of what was uploaded and where it went.
 ## The browser button
 
 [`extension/`](extension/) adds a download button beside every video and image in any
-Chromium browser (Chrome, Vivaldi, Brave, Edge). Images and plain files download instantly
+Chromium browser (Chrome, Vivaldi, Brave, Edge) and in Firefox, Zen and LibreWolf. Images and plain files download instantly
 through the browser; streams go to the CLI through a native-messaging bridge, with live progress
 on the button and a copy-path icon when the file lands. Multi-image posts offer *this one*,
 *all*, or *cancel*.
@@ -142,8 +142,12 @@ on the button and a copy-path icon when the file lands. Multi-image posts offer 
 siphon setup browser    # once: lets the extension hand streams to this siphon
 ```
 
-Then reload the extension. That works for the Chrome Web Store build and the GitHub zip alike;
-loading the extension from source is in [extension/README.md](extension/README.md).
+Then reload the extension. That works for the Chrome Web Store build, the Firefox build and the
+GitHub zip alike; loading the extension from source is in [extension/README.md](extension/README.md).
+
+A Flatpak or Snap browser is sandboxed and can't start a program on your computer. There, run
+`siphon serve`, and in the extension's popup choose **my siphon box** with `http://127.0.0.1:8765`
+and the token from `siphon serve token`. `siphon setup browser` tells you when that applies.
 
 ## How it resolves a link
 

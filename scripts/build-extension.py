@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Build the siphon browser extension's two editions from extension/, deterministically.
 
-    python3 scripts/build-extension.py            # both zips into dist/
+    python3 scripts/build-extension.py            # all three zips into dist/
     python3 scripts/build-extension.py --unpacked # also leave unpacked copies in dist/ to load/test
 
 Editions (one source tree, one build flag; never a fork):
@@ -17,7 +17,15 @@ Editions (one source tree, one build flag; never a fork):
           - policy.js rewritten so background.js refuses YouTube downloads with a message
           - store name/summary (the store shows the manifest's name and description)
           - the padded 128 px store icon (store/icon-128.png) when it exists
-          No host/ (it can't run from inside a store install; users get it from GitHub).
+          No host/ (it can't run from inside a store install; `siphon setup browser` installs it).
+
+  firefox for addons.mozilla.org, and for Zen, LibreWolf and other Firefox-based browsers. Full
+          behaviour (Mozilla's add-on policies have no YouTube or download rule). Derived manifest:
+          - no `key` or `minimum_chrome_version` (Chrome-only)
+          - background as an event page (`scripts`), not a service worker; policy.js listed first
+          - a fixed add-on ID, a minimum Firefox, and the data-collection declaration AMO requires
+          - unused permissions dropped, as in the store build
+          - policy.js rewritten only to change the help text
 
 Deterministic: fixed file order, fixed timestamps (SOURCE_DATE_EPOCH, else 2026-01-01), fixed
 permissions, fixed compression level. Two runs over the same tree give byte-identical zips.
@@ -66,15 +74,31 @@ STORE_DROP_PERMISSIONS = ["scripting", "tabs"]
 # The store package has no host/ folder, so point at the GitHub install instead of host/install.sh.
 STORE_HOST_HELP = ("the siphon app isn't installed on this computer: see github.com/antharmaya/siphon "
                    "(The browser button), then reload this extension")
-POPUP_HOST_HINT_SRC = ('Native host not found. From the extension folder run:<br><code>./host/install.sh</code>'
+POPUP_HOST_HINT_SRC = ("The siphon app isn't connected. In a terminal run:<br><code>siphon setup browser</code>"
                        '<br>then reload this extension.')
 POPUP_HOST_HINT_STORE = ('The siphon app isn\'t installed on this computer, so streams can\'t be saved yet '
                          '(plain files and images still can). Install it from <b>github.com/antharmaya/siphon</b> '
                          '(see “The browser button”), then reload this extension. Or send downloads to your siphon box below.')
 
+# Firefox: the same command, plus the one case it can't fix. A Flatpak or Snap browser is sandboxed
+# and can't start a program on the computer, so the extension reaches siphon over localhost instead.
+FIREFOX_HOST_HELP = ("the siphon app isn't connected: run `siphon setup browser`, then reload this extension. "
+                     "Flatpak or Snap browser? Use \"my siphon box\" with `siphon serve` on this computer")
+POPUP_HOST_HINT_FIREFOX = ("The siphon app isn't connected, so streams can't be saved yet (plain files and images still can). "
+                           'In a terminal run:<br><code>siphon setup browser</code><br>then reload this extension.<br>'
+                           '<b>Flatpak or Snap browser?</b> It can\'t start apps on your computer. Run <code>siphon serve</code> '
+                           'and choose “my siphon box” below.')
+FIREFOX_ID = "siphon@antharmaya.com"  # also in src/siphon/browser.py and extension/host/install.sh
+FIREFOX_MIN = "140.0"                 # the built-in data-consent prompt ships in 140
+# What leaves the browser (to the local siphon app, or to the server the user names): page and stream
+# URLs, media links read from the page, and the user's own box token. Matches the Chrome listing.
+FIREFOX_DATA = ["authenticationInfo", "browsingActivity", "websiteContent"]
+
 STORE_NAME = "siphon: download button for web video"
 STORE_DESCRIPTION = ("A download button on web videos and X photos. Streams go to the free siphon app on your "
                      "computer, or to your own siphon server.")
+FIREFOX_NAME = "siphon: download button for web video"
+FIREFOX_DESCRIPTION = STORE_DESCRIPTION
 
 EPOCH = int(os.environ.get("SOURCE_DATE_EPOCH", "1767225600"))  # 2026-01-01T00:00:00Z
 
@@ -106,6 +130,27 @@ def store_manifest(m: dict) -> dict:
     return m
 
 
+def firefox_manifest(m: dict) -> dict:
+    m = json.loads(json.dumps(m))
+    m.pop("key", None)
+    m.pop("minimum_chrome_version", None)
+    m["name"] = FIREFOX_NAME
+    m["description"] = FIREFOX_DESCRIPTION
+    m["permissions"] = [p for p in m["permissions"] if p not in STORE_DROP_PERMISSIONS]
+    m["background"] = {"scripts": ["policy.js", m["background"]["service_worker"]]}
+    m["browser_specific_settings"] = {"gecko": {
+        "id": FIREFOX_ID, "strict_min_version": FIREFOX_MIN,
+        "data_collection_permissions": {"required": FIREFOX_DATA}}}
+    return m
+
+
+def firefox_policy() -> str:
+    return ("// Generated by scripts/build-extension.py for the Firefox edition. Do not edit.\n"
+            "self.SIPHON_POLICY = " + json.dumps({
+                "edition": "firefox", "blockedHosts": [], "blockedMessage": "", "hostHelp": FIREFOX_HOST_HELP,
+            }, indent=2) + ";\n")
+
+
 def store_policy() -> str:
     return ("// Generated by scripts/build-extension.py for the Chrome Web Store edition. Do not edit.\n"
             "self.SIPHON_POLICY = " + json.dumps({
@@ -121,8 +166,10 @@ def check_manifest(m: dict, files: list[str], edition: str) -> None:
         fail(f"name is {len(m['name'])} chars; the store allows 75")
     if len(m["description"]) > 132:
         fail(f"description is {len(m['description'])} chars; the store allows 132")
-    refs = [m["background"]["service_worker"], m["action"]["default_popup"],
+    refs = [*m["background"].get("scripts", []), m["action"]["default_popup"],
             *m["icons"].values(), *m["action"]["default_icon"].values()]
+    if "service_worker" in m["background"]:
+        refs.append(m["background"]["service_worker"])
     for cs in m["content_scripts"]:
         refs += cs.get("js", []) + cs.get("css", [])
     for r in refs:
@@ -133,6 +180,11 @@ def check_manifest(m: dict, files: list[str], edition: str) -> None:
             fail("store manifest still carries `key`")
         if not all(cs.get("exclude_matches") for cs in m["content_scripts"]):
             fail("store content scripts are not excluded from YouTube")
+    if edition == "firefox":
+        if "key" in m or "service_worker" in m["background"]:
+            fail("firefox manifest still carries Chrome-only keys")
+        if m["background"]["scripts"][0] != "policy.js":
+            fail("firefox background must load policy.js first (there is no importScripts in an event page)")
 
 
 def js_syntax(path: Path) -> None:
@@ -145,19 +197,20 @@ def js_syntax(path: Path) -> None:
 
 def build(edition: str, version: str, src_manifest: dict, unpacked: bool) -> Path:
     files = collect(edition)
-    manifest = store_manifest(src_manifest) if edition == "store" else src_manifest
+    manifest = {"store": store_manifest, "firefox": firefox_manifest}.get(edition, lambda m: m)(src_manifest)
     check_manifest(manifest, files, edition)
 
     def content(rel: str) -> bytes:
-        if rel == "manifest.json" and edition == "store":
+        if rel == "manifest.json" and edition != "github":
             return (json.dumps(manifest, indent=2, ensure_ascii=False) + "\n").encode()
-        if rel == "policy.js" and edition == "store":
-            return store_policy().encode()
-        if rel == "popup.html" and edition == "store":
+        if rel == "policy.js" and edition != "github":
+            return (store_policy() if edition == "store" else firefox_policy()).encode()
+        if rel == "popup.html" and edition != "github":
             html = (SRC / rel).read_text()
             if POPUP_HOST_HINT_SRC not in html:
                 fail("popup.html's host hint changed; update POPUP_HOST_HINT_SRC in this script")
-            return html.replace(POPUP_HOST_HINT_SRC, POPUP_HOST_HINT_STORE).encode()
+            hint = POPUP_HOST_HINT_STORE if edition == "store" else POPUP_HOST_HINT_FIREFOX
+            return html.replace(POPUP_HOST_HINT_SRC, hint).encode()
         if rel == "icons/128.png" and edition == "store" and STORE_ICON.is_file():
             return STORE_ICON.read_bytes()
         return (SRC / rel).read_bytes()
@@ -198,12 +251,12 @@ def build(edition: str, version: str, src_manifest: dict, unpacked: bool) -> Pat
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--unpacked", action="store_true", help="also extract each edition to dist/extension-<edition>/")
-    ap.add_argument("--edition", choices=["store", "github", "both"], default="both")
+    ap.add_argument("--edition", choices=["store", "github", "firefox", "all"], default="all")
     a = ap.parse_args()
 
     src_manifest = json.loads((SRC / "manifest.json").read_text())
     version = src_manifest["version"]
-    editions = ["store", "github"] if a.edition == "both" else [a.edition]
+    editions = ["store", "github", "firefox"] if a.edition == "all" else [a.edition]
     for ed in editions:
         out = build(ed, version, src_manifest, a.unpacked)
         digest = hashlib.sha256(out.read_bytes()).hexdigest()

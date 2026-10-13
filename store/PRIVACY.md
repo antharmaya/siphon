@@ -1,7 +1,8 @@
 # siphon browser extension: privacy policy
 
-*Last updated 2026-10-12. Applies to the siphon extension for Chrome, Edge and other
-Chromium browsers (Chrome Web Store and GitHub editions), version 0.2.0 and later.*
+*Last updated 2026-10-13. Applies to the siphon extension for Chrome, Edge and other Chromium
+browsers and for Firefox and Firefox-based browsers (Chrome Web Store, Firefox and GitHub
+editions), version 0.2.0 and later.*
 
 **Short version:** siphon has no account, no analytics and no telemetry. It doesn't send
 anything to Antharmaya Labs or anyone else. The only places it sends data are your browser's own

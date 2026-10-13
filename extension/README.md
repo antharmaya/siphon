@@ -1,7 +1,7 @@
 # siphon browser extension
 
 A download button next to every video and image, wired to the `siphon` CLI. Works in Vivaldi,
-Chrome, Chromium, Brave, Edge (any Chromium-family browser). Personal use.
+Chrome, Chromium, Brave and Edge, and in Firefox, Zen and LibreWolf (140 or later).
 
 ```
           ┌──────────────┐  click   ┌────────────┐  native   ┌──────────────┐  runs  ┌────────┐
@@ -35,7 +35,13 @@ This is the same mechanism Video DownloadHelper's "CoApp" used.
    `uv tool install --editable ..` from the repo root, then `siphon setup` for ffmpeg and
    friends. Or set `SIPHON_BIN`. The host also finds it via `uv run` in a dev checkout.
 
-The popup's top-right shows **host v0.1.0** when the bridge is reachable, or a red
+**Firefox, Zen, LibreWolf.** Build the Firefox edition (`python3 scripts/build-extension.py
+--unpacked`), then in `about:debugging` → This Firefox → **Load Temporary Add-on**, pick
+`dist/extension-firefox/manifest.json`. `siphon setup browser` registers the host for them too.
+A Flatpak or Snap browser can't start the host: run `siphon serve` and use **my siphon box** with
+`http://127.0.0.1:8765` (see below). `store/src/firefox_check.py` runs the whole flow in a real Firefox.
+
+The popup's top-right shows **host v…** when the bridge is reachable, or a red
 **host missing** with install instructions if not.
 
 ## Use

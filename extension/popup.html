@@ -57,7 +57,11 @@
     <span class="host" id="host">checking…</span>
   </header>
   <div class="install" id="install">
-    Native host not found. From the extension folder run:<br><code>./host/install.sh</code><br>then reload this extension.
+    The siphon app isn't connected. In a terminal run:<br><code>siphon setup browser</code><br>then reload this extension.
+  </div>
+  <div class="install" id="grant">
+    siphon isn't allowed on websites yet, so it can't add its button or see a page's streams.
+    <button id="grantBtn">Allow on all sites</button>
   </div>
   <div class="controls">
     <select id="preset" title="format preset">
