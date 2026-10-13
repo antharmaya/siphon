@@ -85,6 +85,23 @@ def test_cli_direct_media_url(site, tmp_path):
     assert (out / "clip.mp4").read_bytes() == (site["root"] / "media" / "clip.mp4").read_bytes()
 
 
+def test_browser_button_downloads_survive_unreadable_browser_cookies(site, tmp_path):
+    # The extension's host names its browser so logins carry over. No Firefox profile exists in this
+    # HOME: with --cookies-optional the download goes ahead without them; without it, it's an error.
+    import os
+    home = tmp_path / "home"
+    home.mkdir()
+    env = {**os.environ, "HOME": str(home)}
+    env.pop("XDG_CONFIG_HOME", None)
+    cmd = [sys.executable, "-m", "siphon", "--no-netcheck", "--cookies-from-browser", "firefox",
+           site["base"] + "/hls/master.m3u8"]
+    ok = subprocess.run([*cmd, "-o", str(tmp_path / "a"), "--cookies-optional"], env=env, capture_output=True, text=True, timeout=120)
+    assert ok.returncode == 0 and "continuing without your login" in ok.stderr.replace("\n", " "), ok.stderr[-400:]
+    assert list((tmp_path / "a").glob("*.mp4"))
+    strict = subprocess.run([*cmd, "-o", str(tmp_path / "b")], env=env, capture_output=True, text=True, timeout=120)
+    assert strict.returncode != 0 and "cookies" in strict.stderr
+
+
 def test_cli_json_lists_without_downloading(site, tmp_path, capsys):
     out = tmp_path / "out"
     assert main([f"{site['base']}/hls.html", "-o", str(out), "--no-profile", "--timeout", "15", "-j"]) == 0

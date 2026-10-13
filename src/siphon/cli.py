@@ -65,6 +65,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("-N", "--connections", type=int, default=8, help="parallel connections / fragments (default 8)")
     p.add_argument("--timeout", type=float, default=25, help="seconds to watch a page for media (default 25)")
     p.add_argument("--cookies-from-browser", metavar="BROWSER[:PROFILE]", help="use your browser's login (chrome, firefox, brave…)")
+    p.add_argument("--cookies-optional", action="store_true", help=argparse.SUPPRESS)  # the browser button sets this
     p.add_argument("--cookies", metavar="FILE", help="Netscape cookies.txt")
     p.add_argument("--no-profile", action="store_true", help=f"don't use siphon's persistent browser profile ({PROFILE_DIR})")
     p.add_argument("--proxy", default=os.environ.get("SIPHON_PROXY"),
@@ -149,6 +150,16 @@ def main(argv: list[str] | None = None) -> int:
     if not (args.json or args.list):
         from .setup import offer_core
         offer_core(sys.stdin.isatty() and not args.quiet and not args.progress_json, log)
+    if args.cookies_optional and args.cookies_from_browser:
+        # The extension names its browser so logins carry over. If that browser's cookies can't be
+        # read (a profile somewhere unusual, a locked keyring), a public video must still download.
+        from yt_dlp.cookies import extract_cookies_from_browser
+        try:
+            b, profile, keyring, container = browser_spec(args.cookies_from_browser)
+            extract_cookies_from_browser(b, profile, keyring=keyring, container=container)
+        except Exception as e:
+            log(f"couldn't read {args.cookies_from_browser.split(':')[0]}'s cookies, continuing without your login: {str(e)[:160]}")
+            args.cookies_from_browser = None
     ydl = YtdlpEngine(YtdlpConfig(
         outdir=outdir, template=args.template, format=args.format, connections=args.connections,
         cookies_file=args.cookies, cookies_from_browser=args.cookies_from_browser, proxy=args.proxy,
