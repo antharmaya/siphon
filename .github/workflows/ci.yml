@@ -1,0 +1,20 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      # the runner image ships Google Chrome; the sniffer and blob-capture tests drive it
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg rclone
+      - run: uv run pytest -q

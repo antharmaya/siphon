@@ -1,0 +1,43 @@
+name: Release
+
+# Pushing a version tag publishes to PyPI through a Trusted Publisher (OIDC): no token exists
+# anywhere, so none can leak. One-time setup on pypi.org → Publishing → Add a pending publisher:
+# project antharmaya-siphon, owner antharmaya, repo siphon, workflow release.yml, environment pypi.
+# Then turn the job on (it is skipped until then): gh variable set PYPI_PUBLISH --body true
+#
+#   git tag -a v0.3.0 -m v0.3.0 && git push origin v0.3.0
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Tag matches the package version
+        run: |
+          v=$(grep -m1 '^version' pyproject.toml | cut -d'"' -f2)
+          [ "v$v" = "$GITHUB_REF_NAME" ] || { echo "::error::tag $GITHUB_REF_NAME but pyproject says $v"; exit 1; }
+      - run: uv build
+      - name: The wheel installs and runs
+        run: uv run --isolated --no-project --with dist/*.whl siphon --version
+      - uses: actions/upload-artifact@v4
+        with: {name: dist, path: dist/}
+
+  pypi:
+    needs: build
+    if: vars.PYPI_PUBLISH == 'true'
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with: {name: dist, path: dist/}
+      - uses: pypa/gh-action-pypi-publish@release/v1
