@@ -227,7 +227,7 @@ never re-encodes unless you ask, and sends nothing anywhere: no account, no tele
 
 ## Tests
 
-`uv run pytest` runs the suite (67 tests). The end-to-end tests drive real Chrome against a local
+`uv run pytest` runs the suite (147 tests). The end-to-end tests drive real Chrome against a local
 fixture site built with ffmpeg: a late-loaded `<video>`, an XHR-loaded HLS master, an MSE player
 fed from obscured URLs (the network pass can't win there, so only capture can), and a revoked
 Blob. Every output file is checked with ffprobe for its streams and duration. Each core
