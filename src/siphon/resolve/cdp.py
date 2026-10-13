@@ -38,6 +38,11 @@ def find_chrome() -> str | None:
     for exe in CHROMES:
         if p := shutil.which(exe):
             return p
+    if sys.platform == "darwin":  # app bundles aren't on PATH (not yet run on a real Mac)
+        for app in ("Google Chrome", "Brave Browser", "Microsoft Edge", "Vivaldi", "Chromium"):
+            exe = Path(f"/Applications/{app}.app/Contents/MacOS/{app}")
+            if exe.is_file():
+                return str(exe)
     # Last resort: a browser Playwright downloaded earlier, if any is lying around.
     cache = Path.home() / ".cache/ms-playwright"
     for cand in sorted(cache.glob("chromium-*/chrome-linux*/chrome"), reverse=True):
