@@ -47,6 +47,35 @@ def test_registers_with_each_browser_present_and_the_host_answers(home):
     assert [c for c in setup.capabilities() if c.key == "browser"][0].ok is True
 
 
+def test_firefox_family_gets_its_own_manifest_keyed_by_addon_id(home):
+    for d in (".mozilla", ".zen", ".config/chromium"):
+        (home / d).mkdir(parents=True)
+    assert browser.main([]) == 0
+    for d in (".mozilla", ".zen"):
+        m = json.loads((home / d / "native-messaging-hosts/com.antharmaya.siphon.json").read_text())
+        assert m["allowed_extensions"] == ["siphon@antharmaya.com"] and "allowed_origins" not in m
+        assert ask(Path(m["path"]), {"action": "hello"})["event"] == "hello"
+    chromium = json.loads((home / ".config/chromium/NativeMessagingHosts/com.antharmaya.siphon.json").read_text())
+    assert "allowed_extensions" not in chromium  # Chrome rejects a manifest it can't parse as its own
+    assert browser.main(["--remove"]) == 0 and not list(home.rglob("com.antharmaya.siphon.json"))
+
+
+def test_a_firefox_that_keeps_its_profile_under_xdg_still_gets_the_legacy_dir(home):
+    (home / ".config/mozilla/firefox").mkdir(parents=True)  # Firefox 147+ on a fresh machine: no ~/.mozilla
+    assert browser.main([]) == 0
+    # A real Firefox 157 only found the manifest in ~/.mozilla (store/src/firefox_check.py --hosts xdg fails)
+    assert (home / ".mozilla/native-messaging-hosts/com.antharmaya.siphon.json").is_file()
+    assert (home / ".config/mozilla/native-messaging-hosts/com.antharmaya.siphon.json").is_file()
+
+
+def test_a_sandboxed_browser_is_told_about_the_local_server_instead(home, capsys):
+    (home / ".var/app/app.zen_browser.zen").mkdir(parents=True)
+    assert browser.main([]) == 1  # nothing could be registered
+    out = capsys.readouterr().err
+    assert "Zen (Flatpak)" in out and "siphon serve" in out and "127.0.0.1:8765" in out.replace("\n", "")
+    assert not list(home.rglob("com.antharmaya.siphon.json"))
+
+
 def test_says_so_when_no_browser_is_installed_and_writes_nothing(home, capsys):
     assert browser.main([]) == 1
     assert "no Chrome" in capsys.readouterr().err and not (home / "state").exists()
@@ -69,3 +98,6 @@ def test_setup_routes_browser_to_this_command(home):
 def test_extension_ids_match_the_shell_installer():
     sh = (ROOT / "extension/host/install.sh").read_text()
     assert set(re.findall(r'_ID="([a-p]{32})"', sh)) == set(browser.EXTENSION_IDS.values())
+    assert f'FIREFOX_ID="{browser.FIREFOX_ID}"' in sh
+    build = (ROOT / "scripts/build-extension.py").read_text()
+    assert f'FIREFOX_ID = "{browser.FIREFOX_ID}"' in build

@@ -1,11 +1,14 @@
 """Connect the browser button to this siphon: install the native-messaging host, no repo needed.
 
-    siphon setup browser            register the host with every Chromium browser on this machine
+    siphon setup browser            register the host with every Chromium and Firefox-family browser here
     siphon setup browser --remove   unregister it
 
-A browser extension can't start programs. Chrome-family browsers instead start a "native host"
-named in a small JSON manifest in their config dir, and only for the extension IDs that manifest
-allows. siphon writes that manifest, plus a launcher that runs the host with siphon's own Python
+A browser extension can't start programs. Browsers instead start a "native host" named in a small
+JSON manifest in their config dir, and only for the extension IDs that manifest allows. Chromium
+and Firefox use different dirs and a different key for the IDs, so each family gets its own file.
+
+A Flatpak or Snap browser is sandboxed and can't start a host at all. For those, `siphon serve` on
+this computer plus "my siphon box" in the extension does the same job over localhost. siphon writes that manifest, plus a launcher that runs the host with siphon's own Python
 and points it at this siphon, so it keeps working whatever PATH the browser was started with.
 
 The host code ships inside the wheel as siphon/browserhost.py (copied from
@@ -28,10 +31,44 @@ EXTENSION_IDS = {
     "github": "pbeimeldfnbenghllloohnnofbfaicfe",  # unpacked / GitHub zip (key in manifest.json)
     "store": "dkicnkfpoodpflagdafjoobaoclfndlp",   # Chrome Web Store
 }
+FIREFOX_ID = "siphon@antharmaya.com"  # browser_specific_settings.gecko.id in the Firefox build
+
+# Sandboxed browser installs (their per-app data dir), which can't use a native host.
+SANDBOXED = {
+    "Firefox (Flatpak)": ".var/app/org.mozilla.firefox", "Firefox (Snap)": "snap/firefox",
+    "Zen (Flatpak)": ".var/app/app.zen_browser.zen", "LibreWolf (Flatpak)": ".var/app/io.gitlab.librewolf-community",
+    "Floorp (Flatpak)": ".var/app/one.ablaze.floorp", "Chrome (Flatpak)": ".var/app/com.google.Chrome",
+    "Chromium (Flatpak)": ".var/app/org.chromium.Chromium", "Brave (Flatpak)": ".var/app/com.brave.Browser",
+    "Chromium (Snap)": "snap/chromium",
+}
+
+
+def firefox_dirs() -> list[Path]:
+    """Each Firefox-family browser's user-level native-messaging dir, for browsers whose config exists."""
+    home = Path.home()
+    if sys.platform == "darwin":
+        base = home / "Library/Application Support"
+        return [base / "Mozilla/NativeMessagingHosts"] if (base / "Firefox").is_dir() or (base / "Mozilla").is_dir() else []
+    out = []
+    # Firefox 157 reads ~/.mozilla/native-messaging-hosts even when its profile lives under ~/.config/mozilla
+    # (checked in a real Firefox: a manifest only in the XDG dir is not found). Write both when XDG is in use.
+    xdg = home / ".config/mozilla"
+    if (home / ".mozilla").is_dir() or xdg.is_dir():
+        out.append(home / ".mozilla/native-messaging-hosts")
+    if xdg.is_dir():
+        out.append(xdg / "native-messaging-hosts")
+    # Zen, LibreWolf, Floorp and Waterfox each read their own dir, not ~/.mozilla
+    return out + [home / d / "native-messaging-hosts" for d in (".zen", ".librewolf", ".floorp", ".waterfox")
+                  if (home / d).is_dir()]
+
+
+def sandboxed() -> list[str]:
+    home = Path.home()
+    return [name for name, d in SANDBOXED.items() if (home / d).is_dir()]
 
 
 def browser_dirs() -> list[Path]:
-    """Each browser's user-level NativeMessagingHosts dir, for browsers whose config exists."""
+    """Each Chromium browser's user-level NativeMessagingHosts dir, for browsers whose config exists."""
     home = Path.home()
     if sys.platform == "darwin":
         base = home / "Library/Application Support"
@@ -78,27 +115,31 @@ def write_launcher() -> Path:
     return launcher
 
 
-def manifest(launcher: Path) -> dict:
+def manifest(launcher: Path, firefox: bool = False) -> dict:
+    allowed = ({"allowed_extensions": [FIREFOX_ID]} if firefox
+               else {"allowed_origins": [f"chrome-extension://{i}/" for i in EXTENSION_IDS.values()]})
     return {"name": HOST_NAME, "description": "siphon video downloader native host", "path": str(launcher),
-            "type": "stdio", "allowed_origins": [f"chrome-extension://{i}/" for i in EXTENSION_IDS.values()]}
+            "type": "stdio", **allowed}
 
 
 def install() -> list[Path]:
-    dirs = browser_dirs()
-    if not dirs:
+    chromium, firefox = browser_dirs(), firefox_dirs()
+    if not chromium and not firefox:
         return []
-    m = json.dumps(manifest(write_launcher()), indent=2) + "\n"
+    launcher = write_launcher()
     out = []
-    for d in dirs:
-        d.mkdir(parents=True, exist_ok=True)
-        f = d / f"{HOST_NAME}.json"
-        f.write_text(m)
-        out.append(f)
+    for dirs, is_firefox in ((chromium, False), (firefox, True)):
+        m = json.dumps(manifest(launcher, is_firefox), indent=2) + "\n"
+        for d in dirs:
+            d.mkdir(parents=True, exist_ok=True)
+            f = d / f"{HOST_NAME}.json"
+            f.write_text(m)
+            out.append(f)
     return out
 
 
 def installed() -> list[Path]:
-    return [f for d in browser_dirs() if (f := d / f"{HOST_NAME}.json").is_file()]
+    return [f for d in browser_dirs() + firefox_dirs() if (f := d / f"{HOST_NAME}.json").is_file()]
 
 
 def remove() -> list[Path]:
@@ -115,7 +156,8 @@ def main(argv: list[str]) -> int:
 
     err = Console(stderr=True, highlight=False)
     p = argparse.ArgumentParser(prog="siphon setup browser",
-                                description="Connect the siphon browser button to this siphon (Chrome, Brave, Edge, Vivaldi, Chromium).")
+                                description="Connect the siphon browser button to this siphon "
+                                            "(Chrome, Brave, Edge, Vivaldi, Chromium, Firefox, Zen, LibreWolf).")
     p.add_argument("--remove", action="store_true", help="unregister the host from every browser")
     a = p.parse_args(argv)
     if sys.platform == "win32":
@@ -132,11 +174,16 @@ def main(argv: list[str]) -> int:
     except FileNotFoundError as e:
         err.print(f"[red]✗[/] {e}")
         return 1
-    if not done:
-        err.print("[red]✗[/] no Chrome, Brave, Edge, Vivaldi or Chromium profile found on this machine. "
-                  "Open the browser once, then run this again.")
-        return 1
+    boxed = sandboxed()
     for f in done:
         err.print(f"  [green]✓[/] {esc(str(f))}", soft_wrap=True)
-    err.print("Reload the siphon extension (or restart the browser). Its popup should now show [bold]host v…[/] in green.")
-    return 0
+    if done:
+        err.print("Reload the siphon extension (or restart the browser). Its popup should now show [bold]host v…[/] in green.")
+    if boxed:
+        err.print(f"[yellow]![/] {esc(', '.join(boxed))}: sandboxed, so the browser can't start the siphon app. "
+                  "There, run [bold]siphon serve[/] on this computer and choose [bold]my siphon box[/] in the extension "
+                  "(address http://127.0.0.1:8765, token from: siphon serve token).", soft_wrap=True)
+    if not done and not boxed:
+        err.print("[red]✗[/] no Chrome, Brave, Edge, Vivaldi, Chromium, Firefox, Zen or LibreWolf profile found on this "
+                  "machine. Open the browser once, then run this again.")
+    return 0 if done else 1

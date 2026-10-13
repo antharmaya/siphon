@@ -8,7 +8,10 @@ for base in \
   "$HOME/.config/chromium/NativeMessagingHosts" \
   "$HOME/.config/BraveSoftware/Brave-Browser/NativeMessagingHosts" \
   "$HOME/.config/microsoft-edge/NativeMessagingHosts" \
-  "$HOME/snap/vivaldi/current/.config/vivaldi/NativeMessagingHosts"; do
+  "$HOME/snap/vivaldi/current/.config/vivaldi/NativeMessagingHosts" \
+  "$HOME/.mozilla/native-messaging-hosts" "$HOME/.zen/native-messaging-hosts" \
+  "$HOME/.librewolf/native-messaging-hosts" "$HOME/.floorp/native-messaging-hosts" \
+  "$HOME/.waterfox/native-messaging-hosts"; do
   f="$base/$HOST_NAME.json"
   [ -f "$f" ] && rm -v "$f"
 done

@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Installs the siphon native-messaging host for Vivaldi / Chrome / Chromium / Edge / Brave.
+# Installs the siphon native-messaging host for Vivaldi / Chrome / Chromium / Edge / Brave and for
+# Firefox / Zen / LibreWolf. Most people want `siphon setup browser` instead; this one points the
+# browsers at the host in this checkout, for working on it.
 # Re-run after moving the repo. Idempotent.
 set -euo pipefail
 
@@ -31,7 +33,28 @@ DIRS=(
   "$HOME/snap/vivaldi/current/.config/vivaldi/NativeMessagingHosts"
 )
 
+# Firefox-family browsers: their own dirs, and the add-on ID instead of an origin.
+FIREFOX_ID="siphon@antharmaya.com"
+read -r -d '' FF_MANIFEST <<JSON || true
+{
+  "name": "$HOST_NAME",
+  "description": "siphon video downloader native host",
+  "path": "$HOST_PY",
+  "type": "stdio",
+  "allowed_extensions": ["$FIREFOX_ID"]
+}
+JSON
+
 installed=0
+for d in .mozilla .zen .librewolf .floorp .waterfox; do
+  if [ -d "$HOME/$d" ]; then
+    mkdir -p "$HOME/$d/native-messaging-hosts"
+    printf '%s\n' "$FF_MANIFEST" > "$HOME/$d/native-messaging-hosts/$HOST_NAME.json"
+    echo "installed -> $HOME/$d/native-messaging-hosts/$HOST_NAME.json"
+    installed=$((installed+1))
+  fi
+done
+
 for base in "${DIRS[@]}"; do
   parent="$(dirname "$base")"
   # Only install where the browser's own config dir already exists (don't create stray dirs).
@@ -44,7 +67,7 @@ for base in "${DIRS[@]}"; do
 done
 
 if [ "$installed" -eq 0 ]; then
-  echo "no Chromium-family browser config found; nothing installed" >&2
+  echo "no browser config found; nothing installed" >&2
   exit 1
 fi
 echo
