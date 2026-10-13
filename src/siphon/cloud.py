@@ -139,7 +139,12 @@ def main(argv: list[str]) -> int:
     sub.add_parser("list", help="show connected clouds and the default")
     d = sub.add_parser("default", help="set where 'cloud' sends files, e.g. gdrive:siphon")
     d.add_argument("target")
-    args = p.parse_args(argv)
+    # Python 3.11 and early 3.12 reject positionals that follow an option (`add r2 --type r2 key=…`): take them here
+    args, late = p.parse_known_args(argv)
+    if late and (args.cmd != "add" or any(x.startswith("-") or "=" not in x for x in late)):
+        p.error(f"unrecognized arguments: {' '.join(late)}")
+    if args.cmd == "add":
+        args.params += late
 
     try:
         if args.cmd == "list":
