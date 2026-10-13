@@ -35,6 +35,8 @@ Everything to paste or upload is in this folder. Field text lives in `listing.md
 
 ## 3. Before you submit: let the native host accept the store ID (blocking for streams)
 
+**Done 2026-10-12** for item `dkicnkfpoodpflagdafjoobaoclfndlp` (siphon 0.3.0). Kept below for Edge's ID.
+
 `extension/host/install.sh` writes the host manifest with
 `"allowed_origins": ["chrome-extension://pbeimeldfnbenghllloohnnofbfaicfe/"]` only. A store
 install has a different ID, so Chrome refuses the connection. I reproduced this: the store build

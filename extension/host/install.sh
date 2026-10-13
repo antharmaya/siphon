@@ -4,7 +4,8 @@
 set -euo pipefail
 
 HOST_NAME="com.antharmaya.siphon"
-EXT_ID="pbeimeldfnbenghllloohnnofbfaicfe"
+EXT_ID="pbeimeldfnbenghllloohnnofbfaicfe"    # GitHub / unpacked build (key in manifest.json)
+STORE_ID="dkicnkfpoodpflagdafjoobaoclfndlp"  # Chrome Web Store build (the store assigns its own ID)
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HOST_PY="$HERE/siphon_host.py"
 chmod +x "$HOST_PY"
@@ -15,7 +16,7 @@ read -r -d '' MANIFEST <<JSON || true
   "description": "siphon video downloader native host",
   "path": "$HOST_PY",
   "type": "stdio",
-  "allowed_origins": ["chrome-extension://$EXT_ID/"]
+  "allowed_origins": ["chrome-extension://$EXT_ID/", "chrome-extension://$STORE_ID/"]
 }
 JSON
 
@@ -47,5 +48,5 @@ if [ "$installed" -eq 0 ]; then
   exit 1
 fi
 echo
-echo "Host installed for extension id $EXT_ID"
+echo "Host installed for extension ids $EXT_ID (GitHub) and $STORE_ID (Chrome Web Store)"
 echo "Now load the extension (vivaldi://extensions -> Load unpacked -> $(dirname "$HERE"))"
