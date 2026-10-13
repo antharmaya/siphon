@@ -1,6 +1,6 @@
 [project]
 name = "antharmaya-siphon"  # PyPI's plain "siphon" is Unidata's weather library; the command is still `siphon`
-version = "0.2.1"
+version = "0.3.0"
 description = "One sink for any download: video from 1,700+ sites, image posts, and blob:/MediaSource video other tools can't capture. CLI, browser button, queue."
 readme = "README.md"
 requires-python = ">=3.11"
