@@ -3,7 +3,8 @@
 The one thing IDM/JDownloader have that a plain CLI doesn't: line up many downloads, run
 a few at a time, survive a crash. Each job runs as its OWN `siphon` subprocess — perfect
 isolation (a stuck browser or a crash in one job never touches the others) and it reuses
-the entire download pipeline with no special-casing. State is one JSON file.
+the entire download pipeline with no special-casing. State is a SQLite database shared by every
+siphon process (see store.py); an old queue.json is imported once.
 
     siphon queue add URL [URL...] [siphon flags]   add jobs (flags stored per job)
     siphon queue list                              show the queue
@@ -22,14 +23,24 @@ import subprocess
 import sys
 import threading
 import time
-import uuid
 from pathlib import Path
 
 from .paths import STATE
+from .store import Store
 
+# The pre-0.4 queue file; the database lives next to it and imports it on first use.
 QUEUE = Path(os.environ.get("SIPHON_QUEUE", STATE / "queue.json"))
 
-_lock = threading.Lock()
+_stores: dict[Path, Store] = {}
+_stores_lock = threading.Lock()
+
+
+def db() -> Store:
+    path = QUEUE.with_name("queue.db")
+    with _stores_lock:
+        if path not in _stores:
+            _stores[path] = Store(path, legacy_json=QUEUE)
+        return _stores[path]
 
 
 def _siphon_cmd() -> list[str]:
@@ -40,30 +51,16 @@ def _siphon_cmd() -> list[str]:
 
 
 def load() -> list[dict]:
-    try:
-        return json.loads(QUEUE.read_text())
-    except (OSError, ValueError):
-        return []
+    return db().all()
 
 
 def save(jobs: list[dict]) -> None:
-    QUEUE.parent.mkdir(parents=True, exist_ok=True)
-    tmp = QUEUE.with_suffix(".tmp")
-    tmp.write_text(json.dumps(jobs, indent=2))
-    os.replace(tmp, QUEUE)
+    """Replace the whole queue (tests and tools; workers use claim/update)."""
+    db().replace_all(jobs)
 
 
 def add(urls: list[str], extra: list[str]) -> list[dict]:
-    with _lock:
-        jobs = load()
-        new = []
-        for url in urls:
-            job = {"id": uuid.uuid4().hex[:8], "url": url, "args": extra, "status": "pending",
-                   "added": time.strftime("%Y-%m-%dT%H:%M:%S"), "file": None, "error": None}
-            jobs.append(job)
-            new.append(job)
-        save(jobs)
-    return new
+    return db().add(urls, extra)
 
 
 def _has_output(args: list[str]) -> bool:
@@ -125,17 +122,11 @@ def _new_files(prov: Path, since: int, outdir: Path) -> list[str]:
 def run(concurrency: int, outdir: Path, log) -> int:
     from concurrent.futures import ThreadPoolExecutor
 
-    with _lock:
-        jobs = load()
-        # A previous run that was interrupted left jobs "active"; they never finished — requeue.
-        for j in jobs:
-            if j["status"] == "active":
-                j["status"] = "pending"
-        pending = [j for j in jobs if j["status"] == "pending"]
-        for j in pending:
-            j["status"] = "active"
-        save(jobs)
-
+    store = db()
+    recovered = store.recover()  # only jobs whose runner died; another live runner keeps its own
+    if recovered:
+        log(f"requeued {recovered} job(s) left running by a stopped siphon")
+    pending = [j for j in store.all() if j["status"] == "pending"]
     if not pending:
         log("queue is empty (nothing pending)")
         return 0
@@ -144,50 +135,35 @@ def run(concurrency: int, outdir: Path, log) -> int:
     log(f"running {total} job(s), {concurrency} at a time")
     done = {"n": 0, "ok": 0}
 
-    def work(job: dict) -> None:
-        start = time.monotonic()
-        _run_one(job, outdir, log)
-        job["finished"] = time.strftime("%Y-%m-%dT%H:%M:%S")
-        with _lock:
-            jobs = load()
-            for i, j in enumerate(jobs):
-                if j["id"] == job["id"]:
-                    jobs[i] = job
-            save(jobs)
-            done["n"] += 1
-            done["ok"] += job["status"] == "done"
-            mark = "✓" if job["status"] == "done" else "✗"
-            detail = job["file"] if job["status"] == "done" else job["error"]
-            log(f"[{done['n']}/{total}] {mark} {job['url'][:60]}  ({time.monotonic() - start:.0f}s)  {detail or ''}")
+    lock = threading.Lock()
+
+    def work() -> None:
+        while job := store.claim():  # atomic: a job another process claimed is never run twice
+            start = time.monotonic()
+            _run_one(job, outdir, log)
+            store.update(job["id"], status=job["status"], file=job.get("file"), error=job.get("error"),
+                         finished=time.strftime("%Y-%m-%dT%H:%M:%S"))
+            with lock:
+                done["n"] += 1
+                done["ok"] += job["status"] == "done"
+                mark = "✓" if job["status"] == "done" else "✗"
+                detail = job["file"] if job["status"] == "done" else job["error"]
+                log(f"[{done['n']}] {mark} {job['url'][:60]}  ({time.monotonic() - start:.0f}s)  {detail or ''}")
 
     with ThreadPoolExecutor(max_workers=max(1, concurrency)) as ex:
-        list(ex.map(work, pending))
+        for f in [ex.submit(work) for _ in range(max(1, concurrency))]:
+            f.result()
 
-    log(f"done: {done['ok']}/{total} succeeded")
-    return 0 if done["ok"] == total else 1
+    log(f"done: {done['ok']}/{done['n']} succeeded")
+    return 0 if done["ok"] == done["n"] else 1
 
 
 def clear(which: str) -> int:
-    with _lock:
-        jobs = load()
-        if which == "all":
-            kept = []
-        elif which == "done":
-            kept = [j for j in jobs if j["status"] not in ("done",)]
-        else:  # finished = done + error
-            kept = [j for j in jobs if j["status"] in ("pending", "active")]
-        removed = len(jobs) - len(kept)
-        save(kept)
-    return removed
+    return db().clear(which)
 
 
 def remove(ids: list[str]) -> int:
-    with _lock:
-        jobs = load()
-        kept = [j for j in jobs if j["id"] not in ids and not any(j["id"].startswith(i) for i in ids)]
-        removed = len(jobs) - len(kept)
-        save(kept)
-    return removed
+    return db().remove(ids)
 
 
 # ----------------------------------------------------------------- CLI

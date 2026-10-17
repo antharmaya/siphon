@@ -1,6 +1,6 @@
 """Run download jobs in the background and report live progress: the engine behind `siphon serve`.
 
-Jobs live in the same queue file as `siphon queue`, so both see the same list. Each job runs as
+Jobs live in the same database as `siphon queue`, so both see the same list. Each job runs as
 its own `siphon --progress-json` subprocess (a stuck job can't touch the others) with a log file
 under $SIPHON_STATE/logs/. Remote callers describe *intent* — URL, preset, destination — and
 `build_args` turns that into flags from a fixed allowlist; they never pass raw CLI arguments,
@@ -114,12 +114,8 @@ class Runner:
 
     # -------------------------------------------------------------- lifecycle
     def start(self) -> None:
-        with queue._lock:
-            jobs = queue.load()
-            for j in jobs:  # a previous run was interrupted: those jobs never finished
-                if j["status"] == "active":
-                    j["status"] = "pending"
-            queue.save(jobs)
+        # Requeue only jobs whose runner process died; a `siphon queue run` still working keeps its jobs.
+        queue.db().recover()
         for _ in range(self.n):
             t = threading.Thread(target=self._loop, daemon=True)
             t.start()
@@ -143,16 +139,10 @@ class Runner:
 
     # -------------------------------------------------------------- state
     def update(self, job_id: str, **fields) -> dict:
-        with queue._lock:
-            jobs = queue.load()
-            for j in jobs:
-                if j["id"] == job_id:
-                    j.update(fields)
-                    queue.save(jobs)
-                    out = self.view(j)
-                    break
-            else:
-                return {}
+        j = queue.db().update(job_id, **fields)
+        if j is None:
+            return {}
+        out = self.view(j)
         self.on_update(out)
         return out
 
@@ -168,7 +158,8 @@ class Runner:
         return [self.view(j) for j in reversed(queue.load())]
 
     def get(self, job_id: str) -> dict | None:
-        return next((self.view(j) for j in queue.load() if j["id"] == job_id), None)
+        j = queue.db().get(job_id)
+        return self.view(j) if j else None
 
     def cancel(self, job_id: str) -> bool:
         if live := self.live.get(job_id):
@@ -183,15 +174,7 @@ class Runner:
 
     # -------------------------------------------------------------- work
     def _claim(self) -> dict | None:
-        with queue._lock:
-            jobs = queue.load()
-            for j in jobs:
-                if j["status"] == "pending":
-                    j["status"] = "active"
-                    j["started"] = time.strftime("%Y-%m-%dT%H:%M:%S")
-                    queue.save(jobs)
-                    return j
-        return None
+        return queue.db().claim()
 
     def _loop(self) -> None:
         while not self.stopping.is_set():
