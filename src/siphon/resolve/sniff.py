@@ -31,7 +31,7 @@ from typing import Callable, Literal
 from ..media import canonical, classify, is_ad, is_segment, manifest_drm
 from ..models import Candidate
 from .capture import CaptureSink
-from .cdp import Browser, Session, find_chrome, has_proprietary_codecs, setup_target, ua_override
+from .cdp import Browser, Session, find_chrome, setup_target, ua_override
 
 PROFILE_DIR = Path(os.environ.get("SIPHON_PROFILE", Path.home() / ".local/share/siphon/profile"))
 

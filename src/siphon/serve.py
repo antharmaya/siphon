@@ -179,6 +179,8 @@ STATIC = {"/": "index.html", "/live.js": "live.js", "/app.js": "app.js", "/app.c
           **{f"/states/{n}.svg": f"states/{n}.svg" for n in ("resolving", "downloading", "done", "error")}}
 CSP = ("default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self'; script-src 'self'; "
        "connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
+# What this engine serves (docs/api-v1.md). Clients check these, never the version number.
+FEATURES = ["jobs", "events.resume", "jobs.priority", "jobs.category", "jobs.tags"]
 JOB_RE = re.compile(r"^/api/jobs/([0-9a-f]{4,8})(?:/(retry|files/(\d+)|link/(\d+)))?$")
 
 
@@ -300,10 +302,14 @@ class Handler(BaseHTTPRequestHandler):
 
     def _api(self, method: str, path: str, url) -> None:
         r = self.app.runner
+        if method == "GET" and path == "/api/v1/events":
+            return self._events_v1()
+        if path.startswith("/api/v1/"):  # v1 is the same routes; the unversioned ones stay for shipped clients
+            path = "/api/" + path[len("/api/v1/"):]
         if method == "GET" and path == "/api/status":
             from . import cloud
             clouds = [{"id": f"cloud:{n}", "name": n, "type": kind} for n, kind in cloud.remotes()]
-            return self._json(200, {"version": __version__, "host": socket.gethostname(),
+            return self._json(200, {"version": __version__, "api": 1, "features": FEATURES, "host": socket.gethostname(),
                                     "downloads": str(self.app.outdir), "destinations": ["device", "box"],
                                     "clouds": clouds, "cloud_default": paths.load_config().get("cloud_default"),
                                     "capabilities": self.app.capabilities()})
@@ -390,8 +396,60 @@ class Handler(BaseHTTPRequestHandler):
             self.app.unsubscribe(q)
             self.close_connection = True
 
-    def _sse(self, event: str, data) -> None:
-        self.wfile.write(f"event: {event}\ndata: {json.dumps(data)}\n\n".encode())
+    def _events_v1(self) -> None:
+        """v1 stream: stored changes carry the event id from the job database, so a reconnecting
+        client (Last-Event-ID) gets exactly what it missed, even across an engine restart or from
+        another siphon process. Live progress has no id; it is never replayed."""
+        store = queue.db()
+        try:
+            since = int(self.headers.get("Last-Event-ID", ""))
+        except ValueError:
+            since = None
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Accel-Buffering", "no")
+        self.end_headers()
+        q = self.app.subscribe()
+        try:
+            missed = store.events_since(since) if since is not None else None
+            if missed is None:
+                sent = store.last_event()
+                self._sse("snapshot", self.app.runner.jobs(), sent)
+            else:
+                sent = since
+            quiet = 0.0
+            while True:
+                for e in missed if missed is not None else store.events_since(sent) or []:
+                    if e["kind"] == "removed":
+                        self._sse("removed", {"id": e["job_id"]}, e["seq"])
+                    else:
+                        self._sse("job", self.app.runner.view(e["data"]), e["seq"])
+                    sent = e["seq"]
+                missed = None
+                live = []
+                try:
+                    live.append(q.get(timeout=1))  # woken by this engine; the 1s poll catches other processes
+                    while True:
+                        live.append(q.get_nowait())
+                except pyqueue.Empty:
+                    pass
+                for job in {j["id"]: j for j in live if j.get("progress") and j.get("status") == "active"}.values():
+                    self._sse("progress", job)
+                quiet = 0.0 if live else quiet + 1
+                if quiet >= 15:
+                    self.wfile.write(b": ping\n\n")
+                    self.wfile.flush()
+                    quiet = 0.0
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass
+        finally:
+            self.app.unsubscribe(q)
+            self.close_connection = True
+
+    def _sse(self, event: str, data, event_id: int | None = None) -> None:
+        head = f"id: {event_id}\n" if event_id is not None else ""
+        self.wfile.write(f"{head}event: {event}\ndata: {json.dumps(data)}\n\n".encode())
         self.wfile.flush()
 
     def _file(self, job: dict, n: int, inline: bool) -> None:

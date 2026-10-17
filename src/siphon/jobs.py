@@ -97,6 +97,24 @@ def parse_dest(dest: str | None) -> str:
     raise BadRequest("dest must be box, device, cloud or cloud:REMOTE[:folder]")
 
 
+def organise(priority=None, category=None, tags=None) -> dict:
+    """The user's own labels on a job: validated, never passed to siphon."""
+    out: dict = {}
+    if priority is not None:
+        if isinstance(priority, bool) or not isinstance(priority, int) or not -100 <= priority <= 100:
+            raise BadRequest("priority must be a whole number from -100 to 100")
+        out["priority"] = priority
+    if category is not None:
+        if not isinstance(category, str) or not 0 < len(category.strip()) <= 64:
+            raise BadRequest("category must be text, 1-64 characters")
+        out["category"] = category.strip()
+    if tags is not None:
+        if not isinstance(tags, list) or len(tags) > 32 or not all(isinstance(t, str) and 0 < len(t.strip()) <= 64 for t in tags):
+            raise BadRequest("tags must be a list of up to 32 short texts")
+        out["tags"] = sorted({t.strip() for t in tags})
+    return out
+
+
 class Runner:
     """A small pool of workers that pulls pending jobs from the queue and runs them."""
 
@@ -129,13 +147,16 @@ class Runner:
                 p.terminate()
 
     def submit(self, intent: dict, allow_loopback: bool = False) -> dict:
+        intent = dict(intent)
+        meta = organise(intent.pop("priority", None), intent.pop("category", None), intent.pop("tags", None))
         url = validate_url(intent.get("url", ""), allow_loopback)
         args = build_args(intent)
         dest = parse_dest(intent.get("dest"))
-        job = queue.add([url], args)[0]
-        job = self.update(job["id"], dest=dest, source="serve", files=[], stage="queued")
+        job = queue.db().add([url], args, dest=dest, source="serve", files=[], stage="queued", **meta)[0]
+        out = self.view(job)
+        self.on_update(out)
         self.wake.set()
-        return job
+        return out
 
     # -------------------------------------------------------------- state
     def update(self, job_id: str, **fields) -> dict:

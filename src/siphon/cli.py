@@ -31,7 +31,7 @@ from rich.progress import BarColumn, DownloadColumn, Progress, TextColumn, TimeR
 from rich.prompt import Prompt
 from rich.table import Table
 
-from . import __version__, events, netcheck, paths, tools
+from . import __version__, events, netcheck, paths
 from .download import DrmProtected, download
 from .models import Candidate, human_size
 from .resolve import resolve
