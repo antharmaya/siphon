@@ -331,6 +331,39 @@ def test_resolve_goes_straight_to_ytdlp_on_known_video_sites(monkeypatch):
     assert run("https://cdn.example.org/clip.mp4") == (["direct"], "direct")  # a media URL: one GET, done
 
 
+def test_a_post_with_no_video_is_not_handed_to_the_browser(monkeypatch):
+    """yt-dlp's X extractor says the tweet has no video: stop there. Sniffing it saved one of X's
+    own interface animations as "(1) X.mp4" (2026-10-17)."""
+    from siphon import resolve as R
+    from siphon.resolve import gallery
+    from siphon.resolve.sniff import SniffOptions
+    from siphon.ytdlp import Unsupported
+
+    class Ydl:
+        class cfg:
+            cookies_from_browser = cookies_file = None
+
+        def __init__(self, msg):
+            self.msg = msg
+
+        def probe(self, url):
+            raise Unsupported(self.msg)
+
+    sniffed = []
+
+    async def fake_sniff(url, opts, on_found=None):
+        sniffed.append(url)
+        return R.SniffResult(page_url=url, title=None, candidates=[], drm=set(), segments_seen=0)
+
+    monkeypatch.setattr(gallery, "probe", lambda *a, **k: None)
+    monkeypatch.setattr(R, "sniff", fake_sniff)
+    res = R.resolve("https://x.com/NASA/status/1", "auto", Ydl("[twitter] 1: No video could be found in this tweet"), SniffOptions())
+    assert res.best is None and not sniffed
+    # An extractor that broke (not "no video") still falls back to the browser.
+    R.resolve("https://x.com/NASA/status/2", "auto", Ydl("[twitter] 2: Unable to extract guest token"), SniffOptions())
+    assert sniffed == ["https://x.com/NASA/status/2"]
+
+
 def test_parse_section_and_feature_params():
     from siphon.ytdlp import YtdlpConfig, YtdlpEngine, _parse_section
 

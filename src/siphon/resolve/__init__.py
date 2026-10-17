@@ -11,6 +11,7 @@ and also the slowest and the most fragile, so it is the fallback, never the defa
 from __future__ import annotations
 
 import asyncio
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Callable, Literal
@@ -22,6 +23,11 @@ from . import direct, gallery
 from .sniff import SniffOptions, SniffResult, sniff
 
 Engine = Literal["auto", "direct", "ytdlp", "sniff"]
+
+# A site's own extractor saying the post has no video is an answer, not a failure: falling back to the
+# browser then saves whatever video the page's own interface plays (on X: its UI animations).
+NO_VIDEO = re.compile(r"no video could be found|there'?s no video|does not (contain|have) (a |any )?video|"
+                      r"no (video|media) (formats? )?(was |were )?found", re.I)
 
 
 @dataclass
@@ -102,7 +108,7 @@ def resolve(url: str, engine: Engine, ydl: YtdlpEngine, sopts: SniffOptions, pro
             return res
         except Unsupported as e:
             res.tried.append(("ytdlp", f"no: {e}"[:110] + took()))
-            if engine == "ytdlp":
+            if engine == "ytdlp" or (ded and NO_VIDEO.search(str(e))):
                 return res
 
     log("opening the page in Chrome and watching the network…" if not sopts.headed
