@@ -301,7 +301,8 @@ class Runner:
         self.live.pop(job["id"], None)  # the stored record is the truth from here on
         if rc == 0 and (files or remote):
             first = (files or remote)[0]
-            self.update(job["id"], status="done", stage="done", files=files, remote=remote,
+            size = sum(Path(f).stat().st_size for f in files if Path(f).is_file()) or None
+            self.update(job["id"], status="done", stage="done", files=files, remote=remote, size=size,
                         file=first if len(files) + len(remote) == 1 else f"{len(files) + len(remote)} files",
                         finished=time.strftime("%Y-%m-%dT%H:%M:%S"), error=None)
         else:

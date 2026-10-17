@@ -32,6 +32,9 @@ dependencies = [
 [project.optional-dependencies]
 # TLS fingerprint impersonation for Cloudflare-fronted sites (+38 MB). `uv tool install -e '.[impersonate]'`
 impersonate = ["yt-dlp[curl-cffi]>=2026.8.19"]
+app = [
+    "pyside6-essentials>=6.8",
+]
 
 [project.urls]
 Homepage = "https://github.com/antharmaya/siphon"

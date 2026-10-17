@@ -56,6 +56,7 @@ A job is one thing the user asked for (a URL); it may produce many files.
 | `tags` | string[] | |
 | `added`, `started`, `finished` | string | local ISO time, `YYYY-MM-DDTHH:MM:SS` |
 | `files` | string[] | saved paths on the engine's machine |
+| `size` | int or null | total bytes of `files`, once done |
 | `remote` | string[] | cloud copies |
 | `error` | string or null | last error, human-readable |
 | `progress` | object or null | live only: `percent`, `speed`, `done`, `total` |

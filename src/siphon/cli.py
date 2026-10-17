@@ -9,6 +9,7 @@
     siphon setup                     fetch missing tools (ffmpeg, deno, rclone, cloudflared), no sudo
     siphon setup browser             connect the browser extension to this siphon
     siphon setup engine              keep the engine (siphon serve) running in the background
+    siphon app                       the desktop app (needs the [app] extra)
     siphon serve                     your private download box, reachable from your phone
     siphon cloud add gdrive          send downloads to your own cloud (then: --to gdrive:siphon)
 """
@@ -114,6 +115,9 @@ def main(argv: list[str] | None = None) -> int:
     if raw[:1] == ["serve"]:
         from .serve import main as serve_main
         return serve_main(raw[1:])
+    if raw[:1] == ["app"]:
+        from .app import main as app_main
+        return app_main(raw[1:])
     if raw[:1] == ["cloud"]:
         from .cloud import main as cloud_main
         return cloud_main(raw[1:])
