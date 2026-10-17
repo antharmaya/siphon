@@ -7,7 +7,7 @@ import sqlite3
 
 from siphon import jobs, queue
 from siphon.store import Store
-from test_serve import W, box, paired  # noqa: F401  (box is a fixture)
+from test_serve import W, paired
 
 
 def read_events(c, headers=None, until=lambda evs: len(evs) >= 1, limit=20):
@@ -107,3 +107,46 @@ def test_organise_rejects_bad_labels():
     for bad in ({"priority": True}, {"category": "x" * 65}, {"tags": [""]}):
         with pytest.raises(jobs.BadRequest):
             jobs.organise(**bad)
+
+
+def test_pause_resume_and_edit_a_queued_job(box):
+    app, base, _ = box
+    app.runner.stop()
+    c = paired(base)
+    j = c.post("/api/v1/jobs", json={"url": "https://a.example/1"}, headers=W).json()
+    assert c.post(f"/api/v1/jobs/{j['id']}/pause", headers=W).json()["status"] == "paused"
+    assert queue.db().claim() is None  # a paused job is not picked up
+    assert c.post(f"/api/v1/jobs/{j['id']}/pause", headers=W).status_code == 409
+    assert c.post(f"/api/v1/jobs/{j['id']}/resume", headers=W).json()["status"] == "pending"
+    assert c.post(f"/api/v1/jobs/{j['id']}/resume", headers=W).status_code == 409
+    e = c.patch(f"/api/v1/jobs/{j['id']}", json={"priority": 3, "category": "talks", "tags": ["x"]}, headers=W).json()
+    assert (e["priority"], e["category"], e["tags"]) == (3, "talks", ["x"])
+    assert c.patch(f"/api/v1/jobs/{j['id']}", json={"category": None}, headers=W).json()["category"] is None
+    assert c.patch(f"/api/v1/jobs/{j['id']}", json={"url": "https://evil.example/"}, headers=W).status_code == 400
+    assert c.get(f"/api/v1/jobs/{j['id']}").json()["id"] == j["id"]
+    assert c.get("/api/v1/jobs/00000000").status_code == 404
+
+
+def test_pausing_a_running_download_stops_it_and_keeps_it_paused(tmp_path, monkeypatch):
+    import sys
+    import time
+
+    from siphon import paths
+    monkeypatch.setattr(paths, "STATE", tmp_path / "state")
+    monkeypatch.setattr(jobs, "LOGS", tmp_path / "state" / "logs")
+    monkeypatch.setattr(queue, "QUEUE", tmp_path / "state" / "queue.json")
+    slow = [sys.executable, "-c", "import time; time.sleep(60)"]  # stands in for a long download
+    r = jobs.Runner(tmp_path, 1, siphon_cmd=slow)
+    r.start()
+    try:
+        j = r.submit({"url": "https://a.example/big"}, allow_loopback=True)
+        deadline = time.monotonic() + 10
+        while not (r.live.get(j["id"]) or {}).get("proc") and time.monotonic() < deadline:
+            time.sleep(0.05)
+        proc = r.live[j["id"]]["proc"]
+        assert r.pause(j["id"])["status"] == "paused"
+        proc.wait(timeout=10)  # the download process really stopped
+        time.sleep(0.3)
+        assert queue.db().get(j["id"])["status"] == "paused"  # not recorded as an error
+    finally:
+        r.stop()

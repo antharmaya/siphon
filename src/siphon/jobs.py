@@ -33,6 +33,10 @@ class BadRequest(ValueError):
     pass
 
 
+class Conflict(ValueError):
+    """The request is fine but the job's state doesn't allow it (e.g. pausing a finished job)."""
+
+
 def validate_url(url: str, allow_loopback: bool = False) -> str:
     """http(s) only, and not this machine or its link-local neighbours (cloud metadata lives at
     169.254.169.254). A LAN NAS is fine. `allow_loopback` exists for tests and local dev."""
@@ -188,6 +192,41 @@ class Runner:
                 p.terminate()
         return queue.remove([job_id]) > 0
 
+    def pause(self, job_id: str) -> dict:
+        """Stop a queued or running job and keep it out of the queue until resumed. A running download
+        is stopped; the segmented downloader continues from its checkpoint on resume (yt-dlp: unverified)."""
+        j = queue.db().get(job_id)
+        if not j:
+            return {}
+        if j["status"] not in ("pending", "active"):
+            raise Conflict(f"a {j['status']} job can't be paused")
+        live = self.live.get(job_id)
+        if live:
+            live["paused"] = True  # tells _run not to record the stopped process as an error
+        out = self.update(job_id, status="paused", stage="paused")
+        if live and (p := live.get("proc")):
+            p.terminate()
+        return out
+
+    def resume(self, job_id: str) -> dict:
+        j = queue.db().get(job_id)
+        if not j:
+            return {}
+        if j["status"] != "paused":
+            raise Conflict(f"only a paused job can be resumed (this one is {j['status']})")
+        out = self.update(job_id, status="pending", stage="queued", error=None)
+        self.wake.set()
+        return out
+
+    def edit(self, job_id: str, changes: dict) -> dict:
+        """Change a job's own labels; nothing that alters what gets downloaded."""
+        if extra := set(changes) - {"priority", "category", "tags"}:
+            raise BadRequest(f"only priority, category and tags can be changed (not {', '.join(sorted(extra))})")
+        fields = organise(**changes)
+        if "category" in changes and changes["category"] is None:
+            fields["category"] = None  # clearing a category is allowed
+        return self.update(job_id, **fields) if fields else (self.get(job_id) or {})
+
     def retry(self, job_id: str) -> dict:
         out = self.update(job_id, status="pending", error=None, stage="queued", files=[], file=None)
         self.wake.set()
@@ -257,8 +296,8 @@ class Runner:
                     live["stage"] = "resolving"
                 self._notify(job["id"])
             rc = proc.wait()
-        if self.stopping.is_set():
-            return
+        if self.stopping.is_set() or live.get("paused"):
+            return  # stopped on purpose: the stored status (paused, or active for recovery) stands
         self.live.pop(job["id"], None)  # the stored record is the truth from here on
         if rc == 0 and (files or remote):
             first = (files or remote)[0]

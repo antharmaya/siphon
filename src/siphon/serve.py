@@ -180,8 +180,8 @@ STATIC = {"/": "index.html", "/live.js": "live.js", "/app.js": "app.js", "/app.c
 CSP = ("default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self'; script-src 'self'; "
        "connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 # What this engine serves (docs/api-v1.md). Clients check these, never the version number.
-FEATURES = ["jobs", "events.resume", "jobs.priority", "jobs.category", "jobs.tags"]
-JOB_RE = re.compile(r"^/api/jobs/([0-9a-f]{4,8})(?:/(retry|files/(\d+)|link/(\d+)))?$")
+FEATURES = ["jobs", "events.resume", "jobs.priority", "jobs.category", "jobs.tags", "jobs.pause", "jobs.edit"]
+JOB_RE = re.compile(r"^/api/jobs/([0-9a-f]{4,8})(?:/(retry|pause|resume|files/(\d+)|link/(\d+)))?$")
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -264,6 +264,9 @@ class Handler(BaseHTTPRequestHandler):
     def do_DELETE(self):
         self._dispatch("DELETE")
 
+    def do_PATCH(self):
+        self._dispatch("PATCH")
+
     def _dispatch(self, method: str) -> None:
         # Read the body before any decision. An early refusal that leaves body bytes unread on a
         # kept-alive connection gets them parsed as the next request (a desync).
@@ -297,6 +300,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._api(method, path, url)
         except jobs.BadRequest as e:
             return self._err(400, str(e))
+        except jobs.Conflict as e:
+            return self._err(409, str(e))
         except (BrokenPipeError, ConnectionResetError):
             return None
 
@@ -334,8 +339,16 @@ class Handler(BaseHTTPRequestHandler):
                 r.cancel(jid)
                 self.app.broadcast({"id": jid, "removed": True})
                 return self._json(200, {"ok": True})
+            if method == "GET" and not action:
+                return self._json(200, job)
+            if method == "PATCH" and not action:
+                return self._json(200, r.edit(jid, self._body()))
             if method == "POST" and action == "retry":
                 return self._json(200, r.retry(jid))
+            if method == "POST" and action == "pause":
+                return self._json(200, r.pause(jid))
+            if method == "POST" and action == "resume":
+                return self._json(200, r.resume(jid))
             if method == "GET" and n is not None:
                 return self._file(job, int(n), parse_qs(url.query).get("inline") == ["1"])
             if method == "GET" and ln is not None:  # a private, expiring link straight from R2/S3/B2

@@ -38,7 +38,7 @@ Status: **draft**, being built 2026-10. Items marked *(planned)* are not served 
 `GET /api/v1/status` →
 ```json
 {"version": "0.4.0", "api": 1, "host": "fed", "downloads": "/home/u/Downloads",
- "features": ["jobs", "events.resume", "jobs.pause", "jobs.priority", "jobs.category"],
+ "features": ["jobs", "events.resume", "jobs.priority", "jobs.category", "jobs.tags", "jobs.pause", "jobs.edit"],
  "destinations": ["device", "box"], "clouds": [...], "capabilities": [...]}
 ```
 
@@ -63,10 +63,13 @@ A job is one thing the user asked for (a URL); it may produce many files.
 - `GET /api/v1/jobs` → jobs, newest first.
 - `POST /api/v1/jobs` `{"url", "preset"?, "audio"?, "format"?, "section"?, "sponsorblock"?,
   "playlist"?, "dest"?, "priority"?, "category"?, "tags"?}` → 201 job.
-- `GET /api/v1/jobs/{id}` → job. *(planned)*
-- `PATCH /api/v1/jobs/{id}` `{"priority"?, "category"?, "tags"?}` → job. *(planned)*
-- `POST /api/v1/jobs/{id}/pause` → job. Stops the download; partial data is kept. *(planned)*
-- `POST /api/v1/jobs/{id}/resume` → job, back to `pending`. *(planned)*
+- `GET /api/v1/jobs/{id}` → job.
+- `PATCH /api/v1/jobs/{id}` `{"priority"?, "category"?, "tags"?}` → job. Labels only; `category: null` clears it.
+- `POST /api/v1/jobs/{id}/pause` → job. A pending job leaves the queue; a running one is stopped.
+  Plain-file (segmented) downloads continue from their checkpoint on resume. Whether a yt-dlp
+  download continues or restarts is not yet verified; an HLS/DASH recording through ffmpeg starts
+  over. 409 if the job is done or errored.
+- `POST /api/v1/jobs/{id}/resume` → job, back to `pending`. 409 unless paused.
 - `POST /api/v1/jobs/{id}/retry` → job.
 - `DELETE /api/v1/jobs/{id}` → `{"ok": true}`. Removes the job; files stay on disk.
 - `GET /api/v1/jobs/{id}/files/{n}` → the file's bytes.

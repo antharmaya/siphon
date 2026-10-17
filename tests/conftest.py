@@ -224,3 +224,28 @@ def _handler(root: Path):
             self.wfile.write(body)
 
     return H
+
+
+@pytest.fixture
+def box(tmp_path, monkeypatch):
+    """A running `siphon serve` engine on a free port, with its own state and download folder."""
+    import sys
+
+    from siphon import jobs, paths, queue, serve
+
+    state = tmp_path / "state"
+    monkeypatch.setattr(paths, "STATE", state)
+    monkeypatch.setattr(jobs, "LOGS", state / "logs")
+    monkeypatch.setattr(queue, "QUEUE", state / "queue.json")
+    out = tmp_path / "dl"
+    out.mkdir()
+    app = serve.App(out, 2, allow_loopback_urls=True,
+                    runner_kwargs={"siphon_cmd": [sys.executable, "-m", "siphon"], "extra_args": ["--no-netcheck"]})
+    srv = serve.make_server(app, "127.0.0.1", 0)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    app.runner.start()
+    base = f"http://127.0.0.1:{srv.server_address[1]}"
+    yield app, base, out
+    app.runner.stop()
+    srv.shutdown()
+    srv.server_close()
