@@ -591,9 +591,14 @@ def main(argv: list[str]) -> int:
         base = f"http://{reach.lan_ip() or socket.gethostname()}:{a.port}"
     else:
         base = f"http://{'[' + a.listen + ']' if ':' in a.listen else a.listen}:{a.port}"
+    from .store import me
+    local_host = "127.0.0.1" if a.listen in ("0.0.0.0", "127.0.0.1", "localhost") else ("::1" if a.listen in ("::", "::1") else a.listen)
     with _auth_lock:
         d = _load_auth()
         d["base"] = base
+        # How siphon's own clients on this machine find this engine (siphon.client).
+        d["engine"] = {"url": f"http://{'[' + local_host + ']' if ':' in local_host else local_host}:{a.port}",
+                       "owner": me()}
         _save_auth(d)
     code = new_pair_code()
     api_token()
@@ -609,6 +614,12 @@ def main(argv: list[str]) -> int:
     if a.listen not in ("127.0.0.1", "::1", "localhost") and not exposure:
         err.print("  [yellow]![/] listening beyond this machine: anyone on the network can reach the pairing page. "
                   "Codes are one-use and expire, but prefer --tailscale.", soft_wrap=True)
+    import signal
+
+    def _stop(*_):  # systemctl stop / kill: shut down like Ctrl-C (stop jobs, drop the engine record)
+        raise KeyboardInterrupt
+
+    signal.signal(signal.SIGTERM, _stop)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
@@ -618,4 +629,9 @@ def main(argv: list[str]) -> int:
             exposure.stop()
         app.runner.stop()
         srv.server_close()
+        with _auth_lock:
+            d = _load_auth()
+            if d.get("engine", {}).get("owner") == me():
+                d.pop("engine")
+                _save_auth(d)
     return 0

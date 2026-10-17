@@ -150,3 +150,48 @@ def test_pausing_a_running_download_stops_it_and_keeps_it_paused(tmp_path, monke
         assert queue.db().get(j["id"])["status"] == "paused"  # not recorded as an error
     finally:
         r.stop()
+
+
+def test_cli_queue_hands_work_to_a_running_engine(tmp_path):
+    """Real processes: `siphon serve` running, then the CLI. `queue run` leaves the jobs to the engine,
+    and `queue pause` goes through the engine, which stops the running download."""
+    import os
+    import socket
+    import subprocess
+    import sys
+    import time
+
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    env = {**os.environ, "SIPHON_STATE": str(tmp_path / "state"), "SIPHON_QUEUE": str(tmp_path / "state" / "queue.json")}
+
+    def cli(*a):
+        return subprocess.run([sys.executable, "-m", "siphon", "queue", *a], env=env, capture_output=True, text=True, timeout=60)
+
+    eng = subprocess.Popen([sys.executable, "-m", "siphon", "serve", "--port", str(port), "--no-qr", "-o", str(tmp_path)],
+                           env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        serve_json = tmp_path / "state" / "serve.json"
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline and '"engine"' not in (serve_json.read_text() if serve_json.exists() else ""):
+            time.sleep(0.2)
+        # A non-routable address: the download hangs on connect, so the job stays running.
+        assert cli("add", "http://10.255.255.1/big.mp4").returncode == 0
+        r = cli("run")
+        assert r.returncode == 0 and "engine" in r.stderr and "is running the queue" in r.stderr
+        from siphon.store import Store
+        store = Store(tmp_path / "state" / "queue.db")
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline and store.all()[0]["status"] != "active":
+            time.sleep(0.2)
+        jid = store.all()[0]["id"]
+        r = cli("pause", jid[:4])
+        assert r.returncode == 0, r.stderr
+        time.sleep(1)
+        assert store.get(jid)["status"] == "paused"
+        assert cli("resume", jid).returncode == 0 and store.get(jid)["status"] in ("pending", "active")
+    finally:
+        eng.terminate()
+        eng.wait(timeout=10)
+    assert '"engine"' not in serve_json.read_text()  # a stopped engine removes its record

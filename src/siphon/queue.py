@@ -11,6 +11,10 @@ siphon process (see store.py); an old queue.json is imported once.
     siphon queue run [-N 3]                         process pending jobs, N at a time
     siphon queue clear [--done | --all]            drop finished (or all) jobs
     siphon queue rm ID...                           drop specific jobs
+    siphon queue pause ID... / resume ID...         hold jobs back / put them back in line
+
+When `siphon serve` (the engine) is running on this machine it runs the queue: `run` leaves the
+jobs to it, and `pause` goes through it so a running download is actually stopped.
 """
 
 from __future__ import annotations
@@ -178,13 +182,47 @@ def _print_list(err) -> None:
     t = Table(show_header=True, header_style="bold", box=None, pad_edge=False)
     for c in ("id", "status", "url", "file / error"):
         t.add_column(c, overflow="ellipsis", no_wrap=True, max_width=60 if c == "url" else None)
-    colour = {"pending": "yellow", "active": "cyan", "done": "green", "error": "red"}
+    colour = {"pending": "yellow", "active": "cyan", "done": "green", "error": "red", "paused": "magenta"}
     for j in jobs:
         st = f"[{colour.get(j['status'], 'white')}]{j['status']}[/]"
         t.add_row(j["id"], st, j["url"], j.get("file") or j.get("error") or "")
     err.print(t)
-    n = {s: sum(j["status"] == s for j in jobs) for s in ("pending", "active", "done", "error")}
-    err.print(f"[dim]{n['pending']} pending · {n['active']} active · {n['done']} done · {n['error']} error[/]")
+    n = {s: sum(j["status"] == s for j in jobs) for s in ("pending", "active", "paused", "done", "error")}
+    err.print(f"[dim]{n['pending']} pending · {n['active']} active · {n['paused']} paused · {n['done']} done · {n['error']} error[/]")
+
+
+def _match(ids: list[str]) -> list[dict]:
+    jobs = load()
+    return [j for j in jobs if any(j["id"] == i or j["id"].startswith(i) for i in ids)]
+
+
+def _pause_resume(verb: str, ids: list[str], err) -> int:
+    from . import client
+    found = _match(ids)
+    if not found:
+        err.print("[red]✗[/] no job with that id")
+        return 1
+    eng = client.find()
+    rc = 0
+    for j in found:
+        try:
+            if eng and eng.has("jobs.pause"):
+                eng.call("POST", f"/jobs/{j['id']}/{verb}")
+            elif verb == "pause":
+                if j["status"] == "active":
+                    raise client.EngineError("it's running in another siphon process; stop that one first")
+                if j["status"] != "pending":
+                    raise client.EngineError(f"a {j['status']} job can't be paused")
+                db().update(j["id"], status="paused", stage="paused")
+            else:
+                if j["status"] != "paused":
+                    raise client.EngineError(f"only a paused job can be resumed (this one is {j['status']})")
+                db().update(j["id"], status="pending", stage="queued", error=None)
+            err.print(f"[green]✓[/] {verb}d {j['id']}")
+        except client.EngineError as e:
+            err.print(f"[red]✗[/] {j['id']}: {e}")
+            rc = 1
+    return rc
 
 
 def main(argv: list[str]) -> int:
@@ -210,6 +248,12 @@ def main(argv: list[str]) -> int:
     rm = sub.add_parser("rm", help="remove jobs by id (prefix ok)")
     rm.add_argument("ids", nargs="+")
 
+    for verb, helptext in (("pause", "hold jobs back (a running one is stopped)"), ("resume", "put paused jobs back in line")):
+        sp = sub.add_parser(verb, help=helptext)
+        sp.add_argument("ids", nargs="+")
+
+    r.add_argument("--here", action="store_true", help="run jobs in this process even if the siphon engine is running")
+
     args, extra = p.parse_known_args(argv)
 
     if args.cmd == "add":
@@ -219,6 +263,15 @@ def main(argv: list[str]) -> int:
     if args.cmd == "list":
         _print_list(err)
         return 0
+    if args.cmd == "run" and not args.here:
+        from . import client
+        if eng := client.find():
+            n = sum(j["status"] in ("pending", "active") for j in load())
+            err.print(f"[green]✓[/] the siphon engine at {eng.url} is running the queue ({n} waiting or running). "
+                      "Watch with [bold]siphon queue list[/]; use --here to run them in this terminal instead.")
+            return 0
+    if args.cmd in ("pause", "resume"):
+        return _pause_resume(args.cmd, args.ids, err)
     if args.cmd == "run":
         outdir = Path(args.output).expanduser() if args.output else default_outdir()
         rc = run(args.concurrency, outdir, lambda m: err.print(f"[dim]·[/] {m}"))
