@@ -94,10 +94,10 @@ FIREFOX_MIN = "140.0"                 # the built-in data-consent prompt ships i
 # URLs, media links read from the page, and the user's own box token. Matches the Chrome listing.
 FIREFOX_DATA = ["authenticationInfo", "browsingActivity", "websiteContent"]
 
-STORE_NAME = "siphon: download button for web video"
+STORE_NAME = "siphon: video download button"
 STORE_DESCRIPTION = ("A download button on web videos and X photos. Streams go to the free siphon app on your "
                      "computer, or to your own siphon server.")
-FIREFOX_NAME = "siphon: download button for web video"
+FIREFOX_NAME = "siphon: video download button"
 FIREFOX_DESCRIPTION = STORE_DESCRIPTION
 
 EPOCH = int(os.environ.get("SOURCE_DATE_EPOCH", "1767225600"))  # 2026-01-01T00:00:00Z

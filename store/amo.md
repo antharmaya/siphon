@@ -6,7 +6,7 @@ not in this form. Firefox shows it in the install prompt.
 ## Name
 
 ```
-siphon: download button for web video
+siphon: video download button
 ```
 
 ## Summary (max 250 characters)

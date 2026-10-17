@@ -4,10 +4,10 @@ The **name** and **summary** shown in the store come from the package's manifest
 dashboard. `scripts/build-extension.py` sets them for the store build (`STORE_NAME`,
 `STORE_DESCRIPTION`) and refuses to build if either is too long. Only change them there.
 
-## Name (37 / 75 chars, from the manifest)
+## Name (29 / 75 chars, from the manifest; AMO caps its listing name at 30)
 
 ```
-siphon: download button for web video
+siphon: video download button
 ```
 
 ## Summary (127 / 132 chars, from the manifest)
