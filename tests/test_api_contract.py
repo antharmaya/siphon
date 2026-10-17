@@ -176,6 +176,9 @@ def test_cli_queue_hands_work_to_a_running_engine(tmp_path):
         deadline = time.monotonic() + 30
         while time.monotonic() < deadline and '"engine"' not in (serve_json.read_text() if serve_json.exists() else ""):
             time.sleep(0.2)
+        second = subprocess.run([sys.executable, "-m", "siphon", "serve", "--port", "0", "--no-qr"], env=env,
+                                capture_output=True, text=True, timeout=60)
+        assert second.returncode == 1 and "already running" in second.stderr  # one engine per user
         # A non-routable address: the download hangs on connect, so the job stays running.
         assert cli("add", "http://10.255.255.1/big.mp4").returncode == 0
         r = cli("run")
@@ -195,3 +198,16 @@ def test_cli_queue_hands_work_to_a_running_engine(tmp_path):
         eng.terminate()
         eng.wait(timeout=10)
     assert '"engine"' not in serve_json.read_text()  # a stopped engine removes its record
+
+
+def test_engine_service_uses_a_sandboxed_browsers_login(tmp_path, monkeypatch):
+    from siphon import engine
+    monkeypatch.setenv("HOME", str(tmp_path))
+    assert engine.default_cookies() is None
+    (tmp_path / ".var/app/app.zen_browser.zen/.zen").mkdir(parents=True)
+    name, src = engine.default_cookies()
+    assert name == "Zen (Flatpak)" and src == f"firefox:{tmp_path}/.var/app/app.zen_browser.zen/.zen"
+    unit = engine.unit_text("/opt/my tools/siphon", src)
+    assert f"ExecStart='/opt/my tools/siphon' serve --no-qr --cookies-from-browser firefox:{tmp_path}" in unit
+    assert "WantedBy=default.target" in unit and "Restart=on-failure" in unit
+    assert "--cookies" not in engine.unit_text("/usr/bin/siphon", None)

@@ -148,11 +148,14 @@ def setup_main(argv: list[str]) -> int:
     if argv[:1] == ["browser"]:
         from . import browser
         return browser.main(argv[1:])
+    if argv[:1] == ["engine"]:
+        from . import engine
+        return engine.main(argv[1:])
     paths.use_managed_bin()
     p = argparse.ArgumentParser(prog="siphon setup", description="Fetch the tools siphon needs, into its own bin dir (no sudo).")
     p.add_argument("tools", nargs="*", metavar="TOOL",
                    help=f"one or more of: {', '.join(tools.FETCHABLE)} (default: whatever is missing); "
-                        "or `browser` to connect the browser button")
+                        "or `browser` to connect the browser button, or `engine` to run the engine in the background")
     p.add_argument("--all", action="store_true", help="also the optional tools (rclone, cloudflared)")
     p.add_argument("-y", "--yes", action="store_true", help="don't ask")
     a = p.parse_args(argv)

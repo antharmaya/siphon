@@ -569,6 +569,11 @@ def main(argv: list[str]) -> int:
     if a.cookies_from_browser:
         extra += ["--cookies-from-browser", a.cookies_from_browser]
     app = App(outdir, a.jobs, set(a.allow_host), a.allow_loopback_urls, runner_kwargs={"extra_args": extra} if extra else None)
+    from . import client
+    if running := client.find():
+        err.print(f"[yellow]![/] a siphon engine is already running at {running.url}; use that one "
+                  "(or stop it: systemctl --user stop siphon-serve).")
+        return 1
     try:
         srv = make_server(app, a.listen, a.port)
     except OSError as e:
