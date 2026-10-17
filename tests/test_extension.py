@@ -61,6 +61,34 @@ def test_host_reads_a_firefox_forks_own_profiles(tmp_path, monkeypatch):
     assert host.cookie_source("brave", "/app/zen/zen") == "brave"
 
 
+
+def test_host_retries_when_the_installed_siphon_is_older_than_the_host(tmp_path, monkeypatch):
+    # 0.3.0's CLI rejects --cookies-optional; a newer host in front of it failed every click (2026-10-17).
+    import io
+    import json
+    import struct
+
+    host = _load_host()
+    old = tmp_path / "siphon"
+    old.write_text("#!/bin/sh\nfor a in \"$@\"; do [ \"$a\" = --cookies-optional ] && "
+                   "{ echo 'siphon: error: unrecognized arguments: --cookies-optional'; exit 2; }; done\n"
+                   "echo \"✓ $3/clip.mp4  1MB\"\n")
+    old.chmod(0o755)
+    monkeypatch.setenv("SIPHON_BIN", str(old))
+    monkeypatch.setenv("SIPHON_DOWNLOAD_DIR", str(tmp_path))
+    monkeypatch.setenv("SIPHON_HOST_LOG", str(tmp_path / "host.log"))
+    monkeypatch.setattr(host, "LOG", tmp_path / "host.log")
+    out = io.BytesIO()
+    monkeypatch.setattr(host.sys, "stdout", type("S", (), {"buffer": out})())
+    host.run_download({"page": "https://example.com/v", "browser": "chrome"})
+    buf, events = out.getvalue(), []
+    while buf:
+        (n,) = struct.unpack("<I", buf[:4])
+        events.append(json.loads(buf[4:4 + n]))
+        buf = buf[4 + n:]
+    assert events[-1] == {"event": "done", "file": f"{tmp_path}/clip.mp4"}
+    assert "retrying without it" in (tmp_path / "host.log").read_text()
+
 def _load_build():
     import importlib.util
     from pathlib import Path

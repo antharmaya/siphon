@@ -136,19 +136,44 @@ def run_download(req: dict) -> None:
     prov = outdir / "siphon.jsonl"
     prov_before = prov.stat().st_size if prov.exists() else 0
 
+    code, saved_files, out = stream(cmd, env)
+    if code == 2 and "--cookies-optional" in cmd and any("unrecognized arguments" in x for x in out):
+        # The siphon this host runs is older than the host (an upgrade left them out of step): retry without
+        # the newer flag rather than fail every click.
+        log("siphon predates --cookies-optional; retrying without it")
+        cmd.remove("--cookies-optional")
+        code, saved_files, out = stream(cmd, env)
+    if code is None:
+        return
+    if code != 0:
+        send({"event": "error", "message": f"siphon exited with code {code} (see {LOG})"})
+        return
+
+    files = read_saved(prov, prov_before, outdir) or saved_files
+    if len(files) > 1:
+        send({"event": "done", "file": f"{len(files)} files in {outdir}", "files": files})
+    else:
+        send({"event": "done", "file": files[0] if files else f"(saved to {outdir})"})
+
+
+def stream(cmd: list[str], env: dict) -> tuple[int | None, list[str], list[str]]:
+    """Run siphon, relaying progress to the browser. Returns (exit code or None if it didn't start,
+    stdout-parsed saved files, the last lines of output)."""
     try:
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env,
                                 text=True, bufsize=1)
     except OSError as e:
         send({"event": "error", "message": f"couldn't launch siphon: {e}"})
-        return
+        return None, [], []
 
     saved_files = []  # stdout-parsed, used only if the provenance log is empty (e.g. --no-log)
     last_pct = -1
+    tail: list[str] = []
     for line in proc.stdout:
         line = line.rstrip()
         if not line:
             continue
+        tail = (tail + [line])[-20:]
         log("  " + line)
         if ("✓" in line or "Destination:" in line) and (m := SAVED.search(line)):
             saved_files.append(m.group(1))
@@ -162,16 +187,7 @@ def run_download(req: dict) -> None:
         elif "watching the network" in line or "finding" in line.lower() or "Chrome" in line:
             send({"event": "resolving", "message": "finding the stream…"})
 
-    code = proc.wait()
-    if code != 0:
-        send({"event": "error", "message": f"siphon exited with code {code} (see {LOG})"})
-        return
-
-    files = read_saved(prov, prov_before, outdir) or saved_files
-    if len(files) > 1:
-        send({"event": "done", "file": f"{len(files)} files in {outdir}", "files": files})
-    else:
-        send({"event": "done", "file": files[0] if files else f"(saved to {outdir})"})
+    return proc.wait(), saved_files, tail
 
 
 def read_saved(prov: Path, since: int, outdir: Path) -> list[str]:
