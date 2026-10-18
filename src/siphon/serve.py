@@ -180,7 +180,7 @@ STATIC = {"/": "index.html", "/live.js": "live.js", "/app.js": "app.js", "/app.c
 CSP = ("default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self'; script-src 'self'; "
        "connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 # What this engine serves (docs/api-v1.md). Clients check these, never the version number.
-FEATURES = ["jobs", "events.resume", "jobs.priority", "jobs.category", "jobs.tags", "jobs.pause", "jobs.edit"]
+FEATURES = ["jobs", "events.resume", "jobs.priority", "jobs.category", "jobs.tags", "jobs.pause", "jobs.edit", "jobs.video"]
 JOB_RE = re.compile(r"^/api/jobs/([0-9a-f]{4,8})(?:/(retry|pause|resume|files/(\d+)|link/(\d+)))?$")
 
 

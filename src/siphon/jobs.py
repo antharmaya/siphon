@@ -59,7 +59,7 @@ def validate_url(url: str, allow_loopback: bool = False) -> str:
 
 def build_args(intent: dict) -> list[str]:
     """Intent → CLI flags, from a fixed allowlist. Anything unrecognised is an error, not ignored."""
-    known = {"url", "preset", "audio", "format", "section", "sponsorblock", "playlist", "dest"}
+    known = {"url", "preset", "audio", "format", "section", "sponsorblock", "playlist", "dest", "video"}
     if extra := set(intent) - known:
         raise BadRequest(f"unknown option(s): {', '.join(sorted(extra))}")
     args: list[str] = []
@@ -70,6 +70,8 @@ def build_args(intent: dict) -> list[str]:
         args += ["-P", preset]
     if intent.get("audio"):
         args.append("-x")
+    if intent.get("video") is True:
+        args.append("--no-gallery")  # the user picked a video: skip the image-post check
     if fmt := intent.get("format"):
         if not isinstance(fmt, str) or fmt.startswith("-") or not FORMAT_RE.fullmatch(fmt):
             raise BadRequest("format must be a yt-dlp format selector, e.g. bv*[height<=1080]+ba/b")

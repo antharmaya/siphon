@@ -203,12 +203,13 @@
         minW: 120, minH: 80,
         target: () => {
           // On X, the tweet permalink lets yt-dlp fetch exactly this tweet's video — no re-sniff.
-          if (isTwitter) return { mode: "siphon", page: tweetUrlFor(v) };
+          // `video: true`: the click was on a video, so siphon skips the image-post check (2.5s on X).
+          if (isTwitter) return { mode: "siphon", page: tweetUrlFor(v), video: true };
           const src = usableSrc(v);
           // A plain progressive file the browser can just save itself: instant, no host.
           if (src && PROGRESSIVE.test(src)) return { mode: "browser", url: src, filename: fileNameFrom(src), page: location.href };
           // blob:/MSE or unknown — siphon finds the real stream; pass any http(s) src as a hint.
-          return { mode: "siphon", page: location.href, media: src || null };
+          return { mode: "siphon", page: location.href, media: src || null, video: true };
         },
       });
     });

@@ -211,3 +211,8 @@ def test_engine_service_uses_a_sandboxed_browsers_login(tmp_path, monkeypatch):
     assert f"ExecStart='/opt/my tools/siphon' serve --no-qr --cookies-from-browser firefox:{tmp_path}" in unit
     assert "WantedBy=default.target" in unit and "Restart=on-failure" in unit
     assert "--cookies" not in engine.unit_text("/usr/bin/siphon", None)
+
+
+def test_video_intent_skips_gallery():
+    assert jobs.build_args({"url": "u", "video": True}) == ["--no-gallery"]
+    assert jobs.build_args({"url": "u"}) == []

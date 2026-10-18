@@ -63,7 +63,9 @@ A job is one thing the user asked for (a URL); it may produce many files.
 
 - `GET /api/v1/jobs` → jobs, newest first.
 - `POST /api/v1/jobs` `{"url", "preset"?, "audio"?, "format"?, "section"?, "sponsorblock"?,
-  "playlist"?, "dest"?, "priority"?, "category"?, "tags"?}` → 201 job.
+  "playlist"?, "dest"?, "priority"?, "category"?, "tags"?, "video"?}` → 201 job.
+  `video: true` means the user picked a video (not the post's images), so the engine skips the
+  image-post check (feature `jobs.video`).
 - `GET /api/v1/jobs/{id}` → job.
 - `PATCH /api/v1/jobs/{id}` `{"priority"?, "category"?, "tags"?}` → job. Labels only; `category: null` clears it.
 - `POST /api/v1/jobs/{id}/pause` → job. A pending job leaves the queue; a running one is stopped.

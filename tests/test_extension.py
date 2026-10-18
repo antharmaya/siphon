@@ -89,6 +89,24 @@ def test_host_retries_when_the_installed_siphon_is_older_than_the_host(tmp_path,
     assert events[-1] == {"event": "done", "file": f"{tmp_path}/clip.mp4"}
     assert "retrying without it" in (tmp_path / "host.log").read_text()
 
+
+def test_a_click_on_a_video_skips_the_image_post_check(tmp_path, monkeypatch):
+    import io
+
+    host = _load_host()
+    seen = tmp_path / "argv"
+    fake = tmp_path / "siphon"
+    fake.write_text(f"#!/bin/sh\necho \"$@\" > {seen}\n")
+    fake.chmod(0o755)
+    monkeypatch.setenv("SIPHON_BIN", str(fake))
+    monkeypatch.setenv("SIPHON_DOWNLOAD_DIR", str(tmp_path))
+    monkeypatch.setattr(host, "LOG", tmp_path / "host.log")
+    monkeypatch.setattr(host.sys, "stdout", type("S", (), {"buffer": io.BytesIO()})())
+    host.run_download({"page": "https://x.com/a/status/1", "video": True})
+    assert "--no-gallery" in seen.read_text().split()
+    host.run_download({"page": "https://x.com/a/status/1"})  # "Download all images" keeps gallery-dl
+    assert "--no-gallery" not in seen.read_text().split()
+
 def _load_build():
     import importlib.util
     from pathlib import Path

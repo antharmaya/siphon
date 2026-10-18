@@ -198,11 +198,11 @@ function siphonDownload(req, tabId, jobId) {
   detectBrowser().then((browser) => {
     port.postMessage({
       action: "download", page: req.page, media: req.media || null, kind: req.kind || null,
-      preset: req.preset || "best", audioOnly: !!req.audioOnly, browser,
+      preset: req.preset || "best", audioOnly: !!req.audioOnly, video: !!req.video, browser,
     });
   }).catch(() => {
     port.postMessage({ action: "download", page: req.page, media: req.media || null,
-      kind: req.kind || null, preset: req.preset || "best", audioOnly: !!req.audioOnly });
+      kind: req.kind || null, preset: req.preset || "best", audioOnly: !!req.audioOnly, video: !!req.video });
   });
 }
 
@@ -210,6 +210,19 @@ function siphonDownload(req, tabId, jobId) {
 async function boxSettings() {
   const s = await chrome.storage.local.get(["target", "boxUrl", "boxToken"]);
   return s.target === "box" && s.boxUrl && s.boxToken ? s : null;
+}
+
+const featureCache = new Map(); // box URL -> {at, features}
+async function boxFeatures(base, auth) {
+  const hit = featureCache.get(base);
+  if (hit && Date.now() - hit.at < 5 * 60 * 1000) return hit.features;
+  let features = [];
+  try {
+    const r = await fetch(base + "/api/status", { headers: auth });
+    if (r.ok) features = (await r.json()).features || [];
+  } catch {}
+  featureCache.set(base, { at: Date.now(), features });
+  return features;
 }
 
 async function boxDownload(req, tabId, jobId, box) {
@@ -220,6 +233,8 @@ async function boxDownload(req, tabId, jobId, box) {
   const media = direct && /^https?:/.test(direct) ? direct : null;
   const body = { url: media || req.page, preset: req.preset || "best", dest: "box" };
   if (req.audioOnly) body.audio = true;
+  // Only send what this box says it understands (an older box refuses unknown options).
+  if (req.video && (await boxFeatures(base, auth)).includes("jobs.video")) body.video = true;
   relay(tabId, jobId, { event: "resolving", message: "sending to your box…" });
   let job;
   try {

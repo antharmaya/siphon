@@ -119,6 +119,8 @@ def run_download(req: dict) -> None:
     cmd = [*base, target, "-o", str(outdir), "-P", req.get("preset", "best")]
     if req.get("audioOnly"):
         cmd.append("-x")
+    if req.get("video"):
+        cmd.append("--no-gallery")  # the click was on a video: skip the image-post check
     # Logged-in sites (X/Instagram image posts, age-gated video) need the browser's cookies.
     # The extension sends which browser it is; SIPHON_COOKIES_BROWSER overrides, "none" disables.
     cookies = os.environ.get("SIPHON_COOKIES_BROWSER") or req.get("browser")
