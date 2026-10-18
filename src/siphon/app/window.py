@@ -59,6 +59,12 @@ class AddDialog(QDialog):
         form.addRow("", self.audio)
         form.addRow("Category", self.category)
         form.addRow("Priority", self.priority)
+        # Start from the last choices (FDM and AB Download Manager users asked for this).
+        st = QSettings("antharmaya", "siphon")
+        if (i := self.preset.findData(st.value("add/preset", "best"))) >= 0:
+            self.preset.setCurrentIndex(i)
+        self.audio.setChecked(st.value("add/audio", False, type=bool))
+        self.category.setCurrentText(st.value("add/category", "") or "")
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.button(QDialogButtonBox.Ok).setText("Download")
         buttons.accepted.connect(self.accept)
@@ -66,6 +72,10 @@ class AddDialog(QDialog):
         form.addRow(buttons)
 
     def intents(self) -> list[dict]:
+        st = QSettings("antharmaya", "siphon")
+        st.setValue("add/preset", self.preset.currentData())
+        st.setValue("add/audio", self.audio.isChecked())
+        st.setValue("add/category", self.category.currentText().strip())
         out = []
         for line in self.urls.toPlainText().split():
             it = {"url": line.strip(), "preset": self.preset.currentData()}
@@ -214,10 +224,15 @@ class MainWindow(QMainWindow):
             m.addAction("Show siphon", self._show)
             m.addAction("Add download…", lambda: (self._show(), self.add()))
             m.addSeparator()
-            m.addAction("Quit", QApplication.quit)
+            m.addAction("Pause all", lambda: self._all("pause"))
+            m.addAction("Resume all", lambda: self._all("resume"))
+            m.addSeparator()
+            # The engine owns the downloads, so quitting the window never stops them.
+            m.addAction("Quit window (downloads continue)", QApplication.quit)
             self.tray.setContextMenu(m)
             self.tray.activated.connect(lambda r: self._toggle() if r == QSystemTrayIcon.Trigger else None)
             self.tray.setToolTip("siphon")
+            self.tray.messageClicked.connect(self._notification_clicked)
             self.tray.show()
 
     def _action(self, tb, text, icon, slot, shortcut=None) -> QAction:
@@ -235,10 +250,32 @@ class MainWindow(QMainWindow):
 
     def _job(self, job: dict) -> None:
         before = self._categories()
+        i = self.model.index_of.get(job["id"])
+        was = self.model.rows[i].get("status") if i is not None else None
         self.model.upsert(job)
+        if job.get("status") in ("done", "error") and was not in (None, "done", "error"):
+            self._notify(job)
         if self._categories() != before:  # a new category appeared, or the last job of one left it
             self._refresh_categories()
         self._details()
+
+    def _notify(self, job: dict) -> None:
+        """A desktop notification when a download this window watched finishes or fails."""
+        if not self.tray:
+            return
+        name = display_name(job)
+        if job["status"] == "done":
+            self._last_file = (job.get("files") or [None])[0]
+            self.tray.showMessage("Downloaded", name, QSystemTrayIcon.Information, 6000)
+        else:
+            self._last_file = None
+            self.tray.showMessage("Download failed", f"{name}\n{job.get('error') or ''}".strip(), QSystemTrayIcon.Warning, 8000)
+
+    def _notification_clicked(self) -> None:
+        if getattr(self, "_last_file", None):
+            self._open(self._last_file)
+        else:
+            self._show()
 
     def _removed(self, job_id: str) -> None:
         self.model.remove(job_id)
@@ -322,6 +359,16 @@ class MainWindow(QMainWindow):
             for it in dlg.intents():
                 self.link.call("POST", "/jobs", it, tag=f"add {it['url']}")
 
+    def _all(self, verb: str) -> None:
+        ok = ("pending", "active") if verb == "pause" else ("paused",)
+        for j in self.model.rows:
+            if j.get("status") in ok:
+                self.link.call("POST", f"/jobs/{j['id']}/{verb}", tag=f"{verb} {j['id']}")
+
+    def _label(self, **fields) -> None:
+        for j in self.selected():
+            self.link.call("PATCH", f"/jobs/{j['id']}", fields, tag=f"label {j['id']}")
+
     def _each(self, verb: str) -> None:
         ok = {"pause": ("pending", "active"), "resume": ("paused",), "retry": ("error",)}[verb]
         for j in self.selected():
@@ -347,11 +394,6 @@ class MainWindow(QMainWindow):
         if ok:
             for j in sel:
                 self.link.call("PATCH", f"/jobs/{j['id']}", {"category": cat.strip() or None}, tag=f"category {j['id']}")
-
-    def set_priority(self, delta: int) -> None:
-        for j in self.selected():
-            self.link.call("PATCH", f"/jobs/{j['id']}", {"priority": max(-100, min(100, j.get("priority", 0) + delta))},
-                           tag=f"priority {j['id']}")
 
     def open_file(self) -> None:
         sel = self.selected()
@@ -389,10 +431,17 @@ class MainWindow(QMainWindow):
         m.addAction("Open", self.open_file).setEnabled(bool(sel[0].get("files")))
         m.addAction("Open destination folder", self.open_folder)
         m.addSeparator()
-        m.addAction("Category…", self.set_category)
+        # Category and priority one click deep (qBittorrent users objected when this took 5 clicks).
+        cats = m.addMenu("Category")
+        for c in self._categories():
+            cats.addAction(c, lambda c=c: self._label(category=c))
+        if self._categories():
+            cats.addSeparator()
+        cats.addAction("New…", self.set_category)
+        cats.addAction("None", lambda: self._label(category=None))
         pm = m.addMenu("Priority")
-        pm.addAction("Raise", lambda: self.set_priority(+10))
-        pm.addAction("Lower", lambda: self.set_priority(-10))
+        for label, value in (("High", 10), ("Normal", 0), ("Low", -10)):
+            pm.addAction(label, lambda v=value: self._label(priority=v))
         cm = m.addMenu("Copy")
         cm.addAction("Link", lambda: QGuiApplication.clipboard().setText("\n".join(j.get("url", "") for j in sel)))
         cm.addAction("File path", lambda: QGuiApplication.clipboard().setText(
@@ -437,7 +486,9 @@ def _esc(s: str) -> str:
 
 
 def _icon() -> QIcon:
-    icon = QIcon.fromTheme("folder-download")
-    here = Path(__file__).resolve().parents[1] / "web" / "icon.svg"
-    return QIcon(str(here)) if here.exists() else icon
+    icon = QIcon.fromTheme("siphon")  # installed by `siphon setup app`
+    if not icon.isNull():
+        return icon
+    here = Path(__file__).resolve().parents[1] / "web" / "mark.svg"
+    return QIcon(str(here)) if here.exists() else QIcon.fromTheme("folder-download")
 

@@ -74,3 +74,16 @@ def test_window_follows_the_engine_and_sends_commands(qapp, box, monkeypatch):
         assert wait_for(qapp, lambda: job["id"] not in win.model.index_of)
     finally:
         win.stream.stop()
+
+
+def test_launcher_entry_and_autostart(tmp_path, monkeypatch):
+    from siphon.app import desktop
+    monkeypatch.setenv("HOME", str(tmp_path))
+    made = desktop.install("/opt/my tools/siphon", autostart=True)
+    entry = desktop.launcher_path().read_text()
+    assert "Exec='/opt/my tools/siphon' app\n" in entry and "Icon=siphon" in entry
+    assert "--hidden" in desktop.autostart_path().read_text()  # at login: tray only
+    assert desktop.icon_path().read_text().lstrip().startswith("<")
+    desktop.install("/usr/bin/siphon", autostart=False)
+    assert not desktop.autostart_path().exists()  # turning autostart off removes it
+    assert set(desktop.remove()) == {desktop.launcher_path(), desktop.icon_path()} and len(made) == 3

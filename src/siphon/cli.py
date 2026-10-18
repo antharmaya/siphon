@@ -10,6 +10,7 @@
     siphon setup browser             connect the browser extension to this siphon
     siphon setup engine              keep the engine (siphon serve) running in the background
     siphon app                       the desktop app (needs the [app] extra)
+    siphon setup app [--autostart]   put the app in your launcher (and start it at login)
     siphon serve                     your private download box, reachable from your phone
     siphon cloud add gdrive          send downloads to your own cloud (then: --to gdrive:siphon)
 """

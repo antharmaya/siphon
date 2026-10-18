@@ -13,6 +13,8 @@ import sys
 
 
 def main(argv: list[str]) -> int:
+    hidden = "--hidden" in argv  # started at login: stay in the tray
+    argv = [a for a in argv if a != "--hidden"]
     try:
         from PySide6.QtWidgets import QApplication, QMessageBox
     except ImportError:
@@ -32,7 +34,8 @@ def main(argv: list[str]) -> int:
         return 1
     win = MainWindow(engine)
     app.aboutToQuit.connect(win.stream.stop)
-    win.show()
+    if not (hidden and win.tray):
+        win.show()
     if not win.tray:
         app.setQuitOnLastWindowClosed(True)
     return app.exec()

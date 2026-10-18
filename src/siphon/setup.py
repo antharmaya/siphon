@@ -151,6 +151,9 @@ def setup_main(argv: list[str]) -> int:
     if argv[:1] == ["engine"]:
         from . import engine
         return engine.main(argv[1:])
+    if argv[:1] == ["app"]:
+        from .app import desktop
+        return desktop.main(argv[1:])
     paths.use_managed_bin()
     p = argparse.ArgumentParser(prog="siphon setup", description="Fetch the tools siphon needs, into its own bin dir (no sudo).")
     p.add_argument("tools", nargs="*", metavar="TOOL",
